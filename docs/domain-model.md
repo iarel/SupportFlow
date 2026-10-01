@@ -75,12 +75,12 @@
 - **Notifications и Audit — generic** и являются чистыми потребителями событий. Их отказ не влияет на
   основной поток (§4.3).
 - **Reporting — отдельный read-only контекст.** На MVP он читает основную БД (§4.9), но через явный
-  контракт. Это позволяет позже вынести его в отдельную read model или analytical storage без изменений
-  в core.
+  контракт (read-only views), а не через внутренние таблицы Conversations.
 
 ### 2.2 Context Map
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 flowchart LR
     IAM["Identity & Access<br/>(Generic)"]
     ORG["Support Organization<br/>(Supporting)"]
@@ -128,6 +128,7 @@ flowchart LR
 ### 3.1 Модель
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     CONVERSATION ||..|{ MESSAGE : "has (by ConversationId)"
     CONVERSATION ||--o{ STATUS_HISTORY : "records"
@@ -289,6 +290,7 @@ WHERE id = @id AND status = 'New' AND assignee_id IS NULL;
 ### 3.4 Status State Machine
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 stateDiagram-v2
     [*] --> New : Customer opens
     New --> InProgress : Agent claims / Supervisor assigns
@@ -334,6 +336,7 @@ stateDiagram-v2
 ## 4. Support Organization Context
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     TEAM ||..o{ STAFF_MEMBER : "members (by TeamId)"
     TEAM ||--o{ TEAM_SUPERVISOR : "supervised by"
@@ -385,6 +388,7 @@ erDiagram
 ## 5. Identity & Access Context
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     USER_ACCOUNT ||--o| CUSTOMER_PROFILE : "is customer"
 
@@ -415,6 +419,7 @@ erDiagram
 ## 6. AI Assistance Context
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     AI_SUGGESTION {
         uuid Id PK
@@ -474,6 +479,7 @@ erDiagram
 ## 7. Notifications Context
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     NOTIFICATION {
         uuid Id PK
@@ -508,6 +514,7 @@ Notification **не** является дочерней сущностью Conve
 ## 8. Audit Context
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 erDiagram
     AUDIT_EVENT {
         uuid Id PK
@@ -552,16 +559,16 @@ erDiagram
 | `HandlingTime` | `StatusHistory`: время в статусах, `WaitingOnCustomer` исключается | §4.9 |
 | `AssignmentStats` | `AssignmentHistory` | §4.9 |
 
-**MVP:** read-only SQL views в схеме `reporting`, которые публикует модуль Conversations. Это контракт,
-а не доступ к внутренним таблицам (§12.2).
-**Эволюция:** когда отчёты начнут влиять на transactional workload, views заменяются projection из
-integration events или отдельным хранилищем (§4.9). Для потребителей Reporting контракт не меняется.
+Read models реализованы как read-only SQL views в схеме `reporting`, которые публикует модуль
+Conversations. Это контракт, а не доступ к внутренним таблицам (§12.2,
+[ADR-0010](desicions/0010-reporting-read-only-views.md)).
 
 ---
 
 ## 10. Сводная карта агрегатов и ссылок
 
 ```mermaid
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbe9f6","primaryTextColor":"#0b2540","primaryBorderColor":"#5d82a8","lineColor":"#e67700","secondaryColor":"#dbe9f6","tertiaryColor":"#f1f5fa","clusterBkg":"#f1f5fa","clusterBorder":"#5d82a8","titleColor":"#0b4884","edgeLabelBackground":"#fff4e6","textColor":"#e67700","actorBkg":"#438dd5","actorTextColor":"#ffffff","actorBorder":"#2e6295","actorLineColor":"#e67700","signalColor":"#e67700","signalTextColor":"#e67700","labelBoxBkgColor":"#dbe9f6","labelBoxBorderColor":"#5d82a8","labelTextColor":"#0b2540","loopTextColor":"#e67700","noteBkgColor":"#fff4e6","noteTextColor":"#0b2540","noteBorderColor":"#e67700","activationBkgColor":"#dbe9f6","attributeBackgroundColorOdd":"#ffffff","attributeBackgroundColorEven":"#f1f5fa"}}}%%
 flowchart TB
     subgraph IAM["Identity & Access"]
         UA[UserAccount]
@@ -614,7 +621,7 @@ flowchart TB
 | Domain → integration events | At-least-once | Transactional outbox. Потребители дедуплицируют по `SourceEventId`. |
 | AI result → AISuggestion | Eventual, idempotent | A3: уникальность `(ConversationId, Kind, InputUpToSeq)` |
 | Accept AI suggestion → Decision | Eventual | Событие `…Changed { basedOnSuggestionId }` |
-| Workload, отчёты | Eventual (допустимо устаревание) | Views, в будущем projections |
+| Workload, отчёты | Strong read (views над актуальными данными) | Read-only views (ADR-0010) |
 
 ---
 
@@ -622,14 +629,10 @@ flowchart TB
 
 - **Схема на контекст** (`conversations`, `organization`, `identity`, `ai`, `notifications`, `audit`,
   `reporting`). Cross-schema FK не создаются, связи существуют только по ID (§12.2).
-- **Partitioning `messages`** (§13) требует ADR. Главная проблема: в PostgreSQL уникальные индексы
-  партиционированной таблицы обязаны включать ключ партиционирования.
-  - Партиционирование по `created_at` ломает `UNIQUE (conversation_id, seq)` и `UNIQUE (conversation_id, idempotency_key)`.
-  - **Предлагаемый вариант:** хранить в Message денормализованное `ConversationCreatedAt` и партиционировать
-    по нему помесячно. Тогда все сообщения обращения лежат в одной партиции, уникальные ключи вида
-    `(conversation_created_at, conversation_id, seq)` допустимы, а archival по партициям совпадает с
-    retention обращения (~3 года).
-- **Единица archival** — обращение целиком: Conversation, Messages, History и AISuggestions.
+- На Stage 1 таблицы не партиционируются. Если партиционирование `messages` понадобится, учесть:
+  в PostgreSQL уникальные индексы партиционированной таблицы обязаны включать ключ партиционирования,
+  а на `messages` есть уникальные ключи `(conversation_id, seq)` и `(conversation_id, idempotency_key)`.
+- **Единица retention** — обращение целиком: Conversation, Messages, History и AISuggestions.
 
 ---
 
@@ -645,13 +648,16 @@ flowchart TB
 | Q6 | Нужны ли внутренние заметки агентов (не видимые клиенту)? | Появится `Message.Visibility` |
 | Q7 | Требуется ли вложения (attachments)? | Отдельный агрегат и хранилище, влияет на §9 и §10 |
 
-## 14. Кандидаты в ADR
+## 14. Связанные ADR
 
-1. Conversation и Message — отдельные агрегаты, их совместная транзакция при отправке сообщения.
-2. Порядок сообщений через per-conversation `Seq`.
-3. Текущий Assignee в Conversation и условный UPDATE для claim.
-4. Optimistic concurrency через `Version` и ETag для изменений обращения.
-5. AI Assistance как отдельный контекст; AI не изменяет домен напрямую.
-6. Transactional outbox для integration events.
-7. Reporting на MVP через read-only views как контракт модуля.
-8. Стратегия партиционирования `messages`.
+- [ADR-0002](desicions/0002-module-boundaries.md): границы модулей, schema per module
+- [ADR-0003](desicions/0003-transactional-outbox-postgresql-queue.md): transactional outbox
+- [ADR-0004](desicions/0004-conversation-and-message-aggregates.md): Conversation и Message — отдельные агрегаты
+- [ADR-0005](desicions/0005-message-ordering-seq.md): порядок сообщений через `Seq`
+- [ADR-0006](desicions/0006-claim-via-conditional-update.md): claim через условный UPDATE
+- [ADR-0007](desicions/0007-optimistic-concurrency.md): optimistic concurrency
+- [ADR-0008](desicions/0008-idempotency.md): идемпотентность
+- [ADR-0009](desicions/0009-ai-assistance-separate-context.md): AI Assistance как отдельный контекст
+- [ADR-0010](desicions/0010-reporting-read-only-views.md): Reporting через read-only views
+
+Полный реестр: [desicions/README.md](desicions/README.md). Архитектура: [architecture/](architecture/context.md).
