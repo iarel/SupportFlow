@@ -56,13 +56,13 @@ context из [domain-model](../domain-model.md) реализован как из
 
 ```text
 src/Modules/Conversations/
-├── SupportFlow.Conversations/              # внутренняя реализация модуля (internal)
+├── SupportFlow.Modules.Conversations/      # внутренняя реализация модуля (internal)
 │   ├── Domain/                             # агрегаты, value objects, domain events
 │   ├── Application/                        # use cases (commands / queries), порты
 │   ├── Infrastructure/                     # outbound adapters: EF Core, репозитории, SQL, ACL-клиенты
 │   ├── Endpoints/                          # inbound adapter: HTTP route group (Api host)
 │   └── EventHandlers/                      # inbound adapter: integration event handlers, jobs (Worker host)
-└── SupportFlow.Conversations.Contracts/    # публичный контракт модуля
+└── SupportFlow.Modules.Conversations.Contracts/  # публичный контракт модуля
                                             # integration events, query interfaces, DTO
 ```
 

@@ -110,7 +110,7 @@ flowchart LR
     class ep,eh,app,dom,infra,contract component
 ```
 
-Слои — папки внутри проекта `SupportFlow.Conversations`, `Contracts` — отдельный проект. Правила
+Слои — папки внутри проекта `SupportFlow.Modules.Conversations`, `Contracts` — отдельный проект. Правила
 зависимостей — [architecture.md §3–§4](architecture.md).
 
 ### 1.2 Правила границ модулей ([ADR-0002](../desicions/0002-module-boundaries.md))
@@ -359,9 +359,9 @@ src/
     SupportFlow.BuildingBlocks/         # Outbox, inbox, UoW, базовые типы domain events
   Modules/
     Conversations/
-      SupportFlow.Conversations/        # папки Domain / Application / Infrastructure /
-                                        #       Endpoints / EventHandlers
-      SupportFlow.Conversations.Contracts/
+      SupportFlow.Modules.Conversations/  # папки Domain / Application / Infrastructure /
+                                          #       Endpoints / EventHandlers
+      SupportFlow.Modules.Conversations.Contracts/
     SupportOrganization/ …
     Identity/ …
     AIAssistance/ …

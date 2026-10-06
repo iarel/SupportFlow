@@ -1,5 +1,47 @@
 <Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Packages.props" />
+    <File Path="global.json" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/SupportFlow.Api/SupportFlow.Api.csproj" />
+    <Project Path="src/SupportFlow.Worker/SupportFlow.Worker.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="src/BuildingBlocks/SupportFlow.BuildingBlocks/SupportFlow.BuildingBlocks.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Conversations/">
+    <Project Path="src/Modules/Conversations/SupportFlow.Modules.Conversations/SupportFlow.Modules.Conversations.csproj" />
+    <Project Path="src/Modules/Conversations/SupportFlow.Modules.Conversations.Contracts/SupportFlow.Modules.Conversations.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/SupportOrganization/">
+    <Project Path="src/Modules/SupportOrganization/SupportFlow.Modules.SupportOrganization/SupportFlow.Modules.SupportOrganization.csproj" />
+    <Project Path="src/Modules/SupportOrganization/SupportFlow.Modules.SupportOrganization.Contracts/SupportFlow.Modules.SupportOrganization.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/SupportFlow.Modules.Identity/SupportFlow.Modules.Identity.csproj" />
+    <Project Path="src/Modules/Identity/SupportFlow.Modules.Identity.Contracts/SupportFlow.Modules.Identity.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/AIAssistance/">
+    <Project Path="src/Modules/AIAssistance/SupportFlow.Modules.AIAssistance/SupportFlow.Modules.AIAssistance.csproj" />
+    <Project Path="src/Modules/AIAssistance/SupportFlow.Modules.AIAssistance.Contracts/SupportFlow.Modules.AIAssistance.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Notifications/">
+    <Project Path="src/Modules/Notifications/SupportFlow.Modules.Notifications/SupportFlow.Modules.Notifications.csproj" />
+    <Project Path="src/Modules/Notifications/SupportFlow.Modules.Notifications.Contracts/SupportFlow.Modules.Notifications.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Audit/">
+    <Project Path="src/Modules/Audit/SupportFlow.Modules.Audit/SupportFlow.Modules.Audit.csproj" />
+    <Project Path="src/Modules/Audit/SupportFlow.Modules.Audit.Contracts/SupportFlow.Modules.Audit.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Reporting/">
+    <Project Path="src/Modules/Reporting/SupportFlow.Modules.Reporting/SupportFlow.Modules.Reporting.csproj" />
+    <Project Path="src/Modules/Reporting/SupportFlow.Modules.Reporting.Contracts/SupportFlow.Modules.Reporting.Contracts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SupportFlow.ArchitectureTests/SupportFlow.ArchitectureTests.csproj" />
   </Folder>
 </Solution>

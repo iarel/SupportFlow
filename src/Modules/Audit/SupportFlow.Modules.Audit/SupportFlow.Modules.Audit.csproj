@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\BuildingBlocks\SupportFlow.BuildingBlocks\SupportFlow.BuildingBlocks.csproj" />
+    <ProjectReference Include="..\SupportFlow.Modules.Audit.Contracts\SupportFlow.Modules.Audit.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

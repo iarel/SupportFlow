@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Conversations\SupportFlow.Modules.Conversations\SupportFlow.Modules.Conversations.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Conversations\SupportFlow.Modules.Conversations.Contracts\SupportFlow.Modules.Conversations.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\SupportOrganization\SupportFlow.Modules.SupportOrganization\SupportFlow.Modules.SupportOrganization.csproj" />
+    <ProjectReference Include="..\..\src\Modules\SupportOrganization\SupportFlow.Modules.SupportOrganization.Contracts\SupportFlow.Modules.SupportOrganization.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\SupportFlow.Modules.Identity\SupportFlow.Modules.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\SupportFlow.Modules.Identity.Contracts\SupportFlow.Modules.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\AIAssistance\SupportFlow.Modules.AIAssistance\SupportFlow.Modules.AIAssistance.csproj" />
+    <ProjectReference Include="..\..\src\Modules\AIAssistance\SupportFlow.Modules.AIAssistance.Contracts\SupportFlow.Modules.AIAssistance.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notifications\SupportFlow.Modules.Notifications\SupportFlow.Modules.Notifications.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Notifications\SupportFlow.Modules.Notifications.Contracts\SupportFlow.Modules.Notifications.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\SupportFlow.Modules.Audit\SupportFlow.Modules.Audit.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Audit\SupportFlow.Modules.Audit.Contracts\SupportFlow.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\SupportFlow.Modules.Reporting\SupportFlow.Modules.Reporting.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Reporting\SupportFlow.Modules.Reporting.Contracts\SupportFlow.Modules.Reporting.Contracts.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NetArchTest.Rules" />
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+</Project>

@@ -6,7 +6,7 @@ using SupportFlow.Modules.Notifications;
 using SupportFlow.Modules.Reporting;
 using SupportFlow.Modules.SupportOrganization;
 
-var builder = WebApplication.CreateBuilder(args);
+var builder = Host.CreateApplicationBuilder(args);
 
 builder.Services
     .AddConversations(builder.Configuration)
@@ -17,13 +17,5 @@ builder.Services
     .AddAudit(builder.Configuration)
     .AddReporting(builder.Configuration);
 
-var app = builder.Build();
-
-app.MapConversationsEndpoints();
-app.MapSupportOrganizationEndpoints();
-app.MapIdentityEndpoints();
-app.MapAIAssistanceEndpoints();
-app.MapAuditEndpoints();
-app.MapReportingEndpoints();
-
-app.Run();
+var host = builder.Build();
+host.Run();

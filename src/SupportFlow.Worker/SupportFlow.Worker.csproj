@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+<Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <ItemGroup>
     <ProjectReference Include="..\Modules\Conversations\SupportFlow.Modules.Conversations\SupportFlow.Modules.Conversations.csproj" />
