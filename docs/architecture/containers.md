@@ -4,7 +4,7 @@
 > Модульный монолит в двух host-процессах (API + Worker) и одна PostgreSQL с transactional outbox.
 >
 > Связанные документы: [context.md](context.md) · [components.md](components.md) ·
-> [domain-model.md](../domain-model.md)
+> [architecture.md](architecture.md) · [domain-model.md](../domain-model.md)
 
 ## Диаграмма
 
@@ -58,7 +58,7 @@ tables).
 |---|---|---|
 | **Web Client** [Assumption] | SPA | UI для трёх ролей. В репозитории пока отсутствует. |
 | **SupportFlow API** | ASP.NET Core minimal API, .NET 10 | Все синхронные операции (команды и запросы). Проверка JWT, авторизация, rate limiting, idempotency, optimistic concurrency. Пишет domain changes и integration events в outbox одной транзакцией. |
-| **SupportFlow Worker** | .NET Worker Service | Доставка событий из outbox обработчикам, AI jobs, отправка уведомлений, периодические задачи (авто-закрытие `Resolved`, очистка outbox/inbox). |
+| **SupportFlow Worker** | .NET Worker Service | Доставка событий из outbox обработчикам, AI jobs, отправка уведомлений, периодические задачи (авто-закрытие `Resolved`, retention audit, очистка outbox/inbox). |
 | **SupportFlow DB** | PostgreSQL | Единственное хранилище: данные модулей (schema per module), outbox, inbox, job tables. |
 
 ## Ключевые решения
@@ -70,6 +70,7 @@ tables).
 | Transactional outbox и очередь на PostgreSQL (`SKIP LOCKED`), без брокера | [ADR-0003](../desicions/0003-transactional-outbox-postgresql-queue.md) |
 | Внешний Identity Provider, JWT, stateless API | [ADR-0011](../desicions/0011-external-identity-provider.md) |
 | Rate limiting | [ADR-0012](../desicions/0012-rate-limiting.md) |
+| Внутреннее устройство модулей | [ADR-0013](../desicions/0013-module-internal-structure.md), [architecture.md](architecture.md) |
 
 Кратко:
 
@@ -118,6 +119,23 @@ flowchart TB
   одного репозитория.
 - Один регион (§11).
 
+## Observability
+
+API и Worker отправляют metrics, logs и traces в OTel Collector (OTLP). Correlation ID проходит через
+HTTP-запрос, outbox-событие и обработчики, так что асинхронную цепочку можно проследить одним trace.
+
+Минимальный набор метрик Stage 1 [Assumption]:
+
+| Метрика | Зачем |
+|---|---|
+| Latency p95/p99 и RPS по endpoint | Проверка целей §4.1 |
+| Outbox lag: возраст самой старой недоставленной записи | Задержка асинхронной обработки, отставание dispatcher |
+| Глубина очередей jobs: `ai.suggestions` в `Requested`/`Processing`, `notifications` в `Pending` | Перегрузка Worker, отказ провайдеров |
+| AI: latency по `Kind`, доля `Failed`, количество retry | Цели §4.1 для AI, деградация провайдера |
+| Notifications: доля `Abandoned` | Отказ Notification Provider |
+| Ответы `409` / `412` / `429` | Конкуренция за обращения, срабатывание лимитов |
+| PostgreSQL: активные соединения, lock waits, размер таблиц | Главный общий ресурс Stage 1 |
+
 ## Известные ограничения этого этапа
 
 Это свойства текущей архитектуры. Их нужно измерить нагрузочным тестированием, прежде чем что-либо менять
@@ -129,4 +147,5 @@ flowchart TB
 | Вся нагрузка (OLTP, outbox polling, job tables, отчёты) на одной БД | Отчёты и фоновая обработка конкурируют с интерактивными запросами за ресурсы БД. |
 | Outbox доставляется polling'ом | Задержка асинхронной обработки не меньше интервала опроса. Постоянный фоновый поток запросов к БД. |
 | Per-second rate limit хранится в памяти instance | При N instances API фактический лимит в N раз мягче ([ADR-0012](../desicions/0012-rate-limiting.md)). |
-| UI получает новые сообщения только через polling [Assumption] | Дополнительный read traffic (§5.4). |
+| UI получает новые сообщения только через polling [Assumption] | Дополнительный read traffic, не учтённый в модели §5.4: при каждом открытом обращении и интервале опроса T секунд — по запросу `GET …/messages?afterSeq=N` на обращение каждые T секунд. Нужно отдельно учесть в нагрузочных тестах. |
+| Retention реализована частично | Scheduler удаляет audit старше ~1 года и доставленные outbox/inbox. Архивация обращений, сообщений и AI results старше ~3 лет (§4.8) не реализована: её понадобится добавить до того, как данные достигнут этого возраста. Вероятный путь — partitioning `messages` по времени (domain-model §12). |

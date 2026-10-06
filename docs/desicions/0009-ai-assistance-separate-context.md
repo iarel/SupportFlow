@@ -26,11 +26,20 @@ Support Agent (§2.4, FR-020). AI медленный (до 10 s) и ненадё
 ## Decision
 
 Вариант 2.
-- `AISuggestion { Kind, Status, InputUpToSeq, Result, ModelVersion, PromptVersion, Decision }`.
+- `AISuggestion { Kind, Status, InputUpToSeq, Attempts, LeaseUntil, Result, ModelVersion, PromptVersion,
+  Decision }`, `Status: Requested | Processing | Completed | Failed`.
 - Classification и Priority запускаются по `ConversationOpened`. Summary и ReplyDraft запускаются по запросу
   Agent **[Assumption]**.
 - Исполнение асинхронное: event → job (`Requested`) → AI Job Processor → AI Provider через adapter (ACL),
   с timeout, retry и ограничением параллелизма.
+- AI Job Processor берёт job по lease (`Requested → Processing`, `LeaseUntil`), вызывает AI Provider вне
+  транзакции и записывает результат условным UPDATE (ADR-0003). Сообщения читает через
+  `Conversations.Contracts` (`GetMessages(conversationId, upToSeq)`).
+- После исчерпания попыток suggestion переходит в `Failed`. Agent может запросить повтор командой `Retry`:
+  та же запись переводится `Failed → Requested`, `Attempts` сбрасывается. Ключ уникальности
+  `(ConversationId, Kind, InputUpToSeq)` не меняется. `Retry` расходует лимит AI requests (ADR-0012).
+- Если запрос Summary/ReplyDraft совпадает с существующей suggestion (тот же `InputUpToSeq`), возвращается
+  она, а новый вызов AI не выполняется.
 - Принятие: Agent вызывает `ChangeCategory(categoryId, basedOnSuggestionId)`. Событие переводит suggestion
   в `Accepted`. Отклонение — явная команда в AI Assistance.
 - Ответ, основанный на черновике, отправляет Agent. `Message.BasedOnSuggestionId` сохраняет связь для
@@ -40,7 +49,8 @@ Support Agent (§2.4, FR-020). AI медленный (до 10 s) и ненадё
 
 **Плюсы:**
 - FR-020 выполняется структурно: состояние обращения меняет только человек.
-- Отказ AI оставляет suggestion в `Failed` и никак не влияет на обращение.
+- Отказ AI оставляет suggestion в `Failed` и никак не влияет на обращение. Повтор возможен без новых
+  сообщений в обращении.
 - Можно измерять качество AI (доля Accepted по версиям модели и prompt).
 
 **Минусы:**

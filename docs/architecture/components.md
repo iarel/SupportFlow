@@ -3,7 +3,7 @@
 > **Архитектурный этап: Stage 1 — Naive modular monolith.**
 >
 > Связанные документы: [context.md](context.md) · [containers.md](containers.md) ·
-> [domain-model.md](../domain-model.md)
+> [architecture.md](architecture.md) · [domain-model.md](../domain-model.md)
 
 ---
 
@@ -21,10 +21,10 @@ flowchart TB
 
         subgraph pipeline["HTTP Pipeline (cross-cutting)"]
             authn["<b>Authentication</b><br/>JWT Bearer"]
-            authz["<b>Authorization</b><br/>Policies: role + ownership"]
-            rl["<b>Rate Limiter</b>"]
-            idem["<b>Idempotency</b><br/>Idempotency-Key header"]
-            etag["<b>Concurrency</b><br/>ETag / If-Match → Version"]
+            authz["<b>Authorization</b><br/>Policies по роли"]
+            rl["<b>Rate Limiter</b><br/>короткие окна, in-memory"]
+            idem["<b>Idempotency-Key</b><br/>чтение заголовка → команда"]
+            etag["<b>If-Match</b><br/>чтение заголовка → expected Version"]
         end
 
         subgraph modules["Modules"]
@@ -70,11 +70,11 @@ flowchart TB
 | Компонент | Ответственность | ADR |
 |---|---|---|
 | Authentication | Проверка JWT и сопоставление `sub` с `UserAccount` | [0011](../desicions/0011-external-identity-provider.md) |
-| Authorization | Роли и принадлежность (Customer видит только свои обращения, Supervisor — обращения своих команд) | — |
-| Rate Limiter | Защита от чрезмерной нагрузки (§4.7) | [0012](../desicions/0012-rate-limiting.md) |
-| Idempotency | `Idempotency-Key` для создания обращения и отправки сообщения | [0008](../desicions/0008-idempotency.md) |
-| Concurrency | `ETag`/`If-Match`, соответствующий `Version` агрегата. При несовпадении → 409 | [0007](../desicions/0007-optimistic-concurrency.md) |
-| Модули | Бизнес-логика bounded contexts из domain-model | [0002](../desicions/0002-module-boundaries.md) |
+| Authorization | Policies по роли. Принадлежность (Customer видит только свои обращения, Supervisor — обращения своих команд) проверяет Application модуля: для этого нужны данные обращения | [0013](../desicions/0013-module-internal-structure.md) |
+| Rate Limiter | Короткие окна (1 msg/s, API requests) в памяти instance. Суточный лимит обращений и лимит AI requests проверяются в модулях | [0012](../desicions/0012-rate-limiting.md) |
+| Idempotency-Key | Только читает заголовок и передаёт ключ в команду. Дубли отсекает ограничение уникальности в схеме модуля | [0008](../desicions/0008-idempotency.md) |
+| If-Match | Только читает заголовок (нет → 428) и передаёт ожидаемую версию в команду. Проверка — при сохранении агрегата (несовпадение → 412) | [0007](../desicions/0007-optimistic-concurrency.md) |
+| Модули | Бизнес-логика bounded contexts из domain-model. Внутреннее устройство — [architecture.md](architecture.md) | [0002](../desicions/0002-module-boundaries.md), [0013](../desicions/0013-module-internal-structure.md) |
 | Unit of Work + Outbox Writer | Изменение агрегата и integration event коммитятся атомарно | [0003](../desicions/0003-transactional-outbox-postgresql-queue.md) |
 
 У модуля Notifications нет пользовательских операций. Он полностью асинхронный и работает только в
@@ -87,23 +87,31 @@ Worker.
 flowchart LR
     subgraph convm["Conversations Module"]
         direction LR
-        ep["<b>Endpoints</b><br/>Minimal API route group<br/>/conversations/*"]
-        app["<b>Application</b><br/>Command / Query handlers"]
+        ep["<b>Endpoints</b><br/>[inbound adapter, Api]<br/>Minimal API route group<br/>/conversations/*"]
+        eh["<b>EventHandlers / Jobs</b><br/>[inbound adapter, Worker]<br/>авто-закрытие Resolved"]
+        app["<b>Application</b><br/>Command / Query handlers,<br/>порты"]
         dom["<b>Domain</b><br/>Conversation, Message, Category<br/>инварианты, domain events"]
-        infra["<b>Infrastructure</b><br/>Repositories, EF Core mappings,<br/>schema conversations"]
+        infra["<b>Infrastructure</b><br/>[outbound adapter]<br/>Repositories, EF Core mappings,<br/>schema conversations"]
         contract["<b>Contracts (public)</b><br/>Integration events,<br/>query interfaces"]
     end
     other["Другие модули"]
+    orgc["SupportOrganization.Contracts"]
 
-    ep --> app --> dom
-    app --> infra
+    ep --> app
+    eh --> app
+    app --> dom
+    infra -. "реализует порты" .-> app
     infra --> dom
+    app -- "IsActiveMember" --> orgc
     app -. "публикует" .-> contract
     other -- "зависят только от" --> contract
 
     classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
-    class ep,app,dom,infra,contract component
+    class ep,eh,app,dom,infra,contract component
 ```
+
+Слои — папки внутри проекта `SupportFlow.Conversations`, `Contracts` — отдельный проект. Правила
+зависимостей — [architecture.md §3–§4](architecture.md).
 
 ### 1.2 Правила границ модулей ([ADR-0002](../desicions/0002-module-boundaries.md))
 
@@ -113,6 +121,32 @@ flowchart LR
 3. Синхронные межмодульные вызовы допускаются **только для чтения**. Изменения в другом модуле происходят
    только через integration events.
 4. Правила проверяются архитектурными тестами.
+
+### 1.3 Соглашения API
+
+**Пагинация (§10, §13).** Ни один список не возвращается без ограничения.
+
+| Ресурс | Пагинация | Размер страницы [Assumption] |
+|---|---|---|
+| Список обращений (Customer, Agent, Supervisor) | Keyset по `(last_activity_at DESC, id)`, непрозрачный `cursor` | по умолчанию 20, максимум 100 |
+| История сообщений | Keyset по `Seq`: `?afterSeq=N` (новые) / `?beforeSeq=N` (старые) | по умолчанию 50, максимум 200 |
+| Suggestions обращения | Последние по каждому `Kind` | — |
+| Отчёты | Обязательный период и фильтр по командам Supervisor (ADR-0010) | — |
+
+**Ограничения размера.** Тело запроса отправки сообщения — не больше 16 KB (сообщение ≤ 10 KB плюс
+метаданные) **[Assumption]**, остальные команды — не больше 4 KB **[Assumption]**. Превышение → `413`.
+
+**Коды ошибок.**
+
+| Код | Когда |
+|---|---|
+| `400` | Неверный формат запроса |
+| `403` | Нет прав на ресурс (чужое обращение, обращение вне команд Supervisor) |
+| `409` | Нарушение бизнес-правила или конфликт без `If-Match`: claim уже взят, недопустимый переход статуса, обращение `Closed`, лимит 1000 сообщений |
+| `412` | `If-Match` не совпадает с текущей `Version` ([ADR-0007](../desicions/0007-optimistic-concurrency.md)) |
+| `413` | Превышен размер запроса |
+| `428` | Команда изменения без `If-Match` |
+| `429` | Превышен rate limit, с `Retry-After` ([ADR-0012](../desicions/0012-rate-limiting.md)) |
 
 ---
 
@@ -132,36 +166,48 @@ flowchart TB
         subgraph handlers["Integration Event Handlers (inbox dedup)"]
             h_ai["<b>AI Request Handler</b><br/>ConversationOpened →<br/>AISuggestion Requested"]
             h_dec["<b>AI Decision Handler</b><br/>CategoryChanged / PriorityChanged<br/>with suggestion → Accepted"]
-            h_not["<b>Notification Handler</b><br/>Agent message, Resolved →<br/>Notification Pending"]
+            h_not["<b>Notification Handler</b><br/>Agent message, Resolved, Closed →<br/>Notification Pending"]
             h_aud["<b>Audit Handler</b><br/>значимые события → AuditEvent"]
         end
 
-        aiw["<b>AI Job Processor</b><br/>Берёт Requested suggestions,<br/>concurrency limit, timeout, retry"]
+        aiw["<b>AI Job Processor</b><br/>Requested → Processing (lease),<br/>concurrency limit, timeout, retry"]
         acl_ai["<b>AI Provider Adapter</b><br/>[ACL] prompt building,<br/>response parsing"]
-        ns["<b>Notification Sender</b><br/>Pending / retry по NextAttemptAt"]
-        acl_np["<b>Notification Provider Adapter</b><br/>[ACL]"]
-        sched["<b>Scheduler</b><br/>Авто-закрытие Resolved,<br/>очистка outbox / inbox"]
+        ns["<b>Notification Sender</b><br/>Pending → Processing (lease),<br/>retry по NextAttemptAt"]
+        acl_np["<b>Notification Provider Adapter</b><br/>[ACL], idempotency key = NotificationId"]
+        sched["<b>Scheduler</b><br/>Авто-закрытие Resolved,<br/>retention, очистка outbox / inbox"]
+
+        subgraph contracts["Contracts других модулей (in-process, только чтение)"]
+            conv_c["<b>Conversations.Contracts</b><br/>GetMessages(convId, upToSeq)"]
+            iam_c["<b>Identity.Contracts</b><br/>GetContactInfo(customerId)"]
+        end
     end
 
     disp -- "SELECT … FOR UPDATE SKIP LOCKED" --> db
     disp --> h_ai & h_dec & h_not & h_aud
     h_ai & h_dec & h_not & h_aud -- "INSERT / UPDATE + inbox" --> db
+    h_not -- "снимок адреса получателя" --> iam_c
 
-    aiw -- "claim jobs, GetMessages(upToSeq)" --> db
-    aiw --> acl_ai -- "HTTPS" --> ai
+    aiw -- "claim job (lease), запись результата<br/>[schema ai]" --> db
+    aiw -- "сообщения до InputUpToSeq" --> conv_c
+    aiw --> acl_ai -- "HTTPS, вне транзакции" --> ai
 
-    ns -- "claim notifications" --> db
-    ns --> acl_np -- "HTTPS" --> np
+    ns -- "claim notification (lease)<br/>[schema notifications]" --> db
+    ns --> acl_np -- "HTTPS, вне транзакции" --> np
 
-    sched -- "SQL" --> db
+    conv_c & iam_c -- "SQL своих схем" --> db
+    sched -- "команды модулей" --> db
 
     classDef container fill:#438dd5,stroke:#2e6295,color:#fff
     classDef component fill:#85bbf0,stroke:#5d82a8,color:#000
     classDef external fill:#999,stroke:#6b6b6b,color:#fff
     class db container
-    class disp,h_ai,h_dec,h_not,h_aud,aiw,acl_ai,ns,acl_np,sched component
+    class disp,h_ai,h_dec,h_not,h_aud,aiw,acl_ai,ns,acl_np,sched,conv_c,iam_c component
     class ai,np external
 ```
+
+Worker содержит те же модули, что и API. На диаграмме показаны только его inbound adapters (dispatcher,
+handlers, job processors, scheduler) и контракты, через которые они читают данные других модулей.
+Обработчики и jobs вызывают Application своего модуля ([architecture.md §13](architecture.md)).
 
 **Обоснование:**
 
@@ -169,6 +215,15 @@ flowchart TB
   `AISuggestion(Requested)`: это быстро и выполняется в транзакции. Провайдера вызывает `AI Job Processor`.
   Поэтому медленный или недоступный AI не задерживает доставку остальных событий, а таблица
   `ai.suggestions` одновременно служит очередью AI-работ. Уведомления устроены так же.
+- **Job берётся по lease, внешний вызов — вне транзакции** ([ADR-0003](../desicions/0003-transactional-outbox-postgresql-queue.md)).
+  Короткая транзакция переводит job в `Processing` с `LeaseUntil` и увеличивает `Attempts`. Вызов AI или
+  Notification Provider идёт без открытой транзакции и соединения с БД. Результат пишется условным UPDATE
+  `WHERE status = 'Processing' AND attempts = @myAttempt`. Job с истёкшим lease снова доступен другим
+  instances. Notification Provider получает `NotificationId` как idempotency key: повторная отправка после
+  сбоя не дублирует уведомление.
+- **Retention** ([§4.8](../requiremenets.md)). Scheduler удаляет `AuditEvent` старше ~1 года и доставленные
+  записи outbox/inbox. Архивация обращений старше ~3 лет на Stage 1 не реализована (см.
+  [containers.md](containers.md), известные ограничения).
 - **Inbox** (обработанные `EventId` на каждый обработчик) превращает at-least-once доставку в
   effectively-once обработку (§4.4).
 - **Ограничение параллельных вызовов AI Provider** на instance (bulkhead): §6, «ограничение concurrency
@@ -196,14 +251,22 @@ sequenceDiagram
     participant W as Worker
 
     C->>API: POST /conversations/{id}/messages<br/>Idempotency-Key: K
-    API->>API: JWT, ownership, rate limit, size ≤ 10 KB
-    API->>DB: BEGIN
-    API->>DB: UPDATE conversations SET last_message_seq + 1,<br/>message_count + 1 RETURNING seq<br/>(row lock, проверка инвариантов)
-    API->>DB: INSERT message (seq, idempotency_key = K)
-    API->>DB: INSERT outbox (MessagePosted)
-    API->>DB: COMMIT
-    API-->>C: 201 Created {seq}
-    Note over C,API: Повтор с тем же K → возвращается<br/>уже созданное сообщение
+    API->>API: JWT, rate limit 1 msg/s, size ≤ 16 KB
+    API->>DB: SELECT message WHERE (conversation_id, author_id, K)
+    alt уже существует (повтор)
+        API-->>C: 200 OK {существующее сообщение}
+    else новое сообщение
+        API->>DB: BEGIN
+        API->>DB: SELECT conversation … FOR UPDATE
+        API->>API: ownership (CustomerId), Conversation.RegisterMessage(author):<br/>C4, C5, C8 → Seq = LastMessageSeq + 1,<br/>WaitingOnCustomer / Resolved → InProgress
+        API->>DB: UPDATE conversation (last_message_seq, message_count,<br/>status, version + 1)
+        API->>DB: INSERT message (seq, author_id, idempotency_key = K)
+        API->>DB: INSERT status_history (если статус изменился)
+        API->>DB: INSERT outbox (MessagePosted [, ConversationStatusChanged])
+        API->>DB: COMMIT
+        API-->>C: 201 Created {seq}
+    end
+    Note over API,DB: Конкурентный повтор с тем же K: INSERT нарушает UNIQUE →<br/>ROLLBACK всей транзакции → API возвращает сообщение первого запроса
     W->>DB: poll outbox (SKIP LOCKED)
     W->>W: Audit Handler, Notification Handler (если автор Agent)
 ```
@@ -227,11 +290,15 @@ sequenceDiagram
     and
         A2->>API: POST /conversations/{id}/claim
     end
-    API->>DB: UPDATE ... SET assignee = A1, status = InProgress<br/>WHERE status = New AND assignee IS NULL
+    API->>API: SupportOrganization.Contracts:<br/>A1, A2 активны и состоят в команде обращения (TeamId)
+    API->>DB: SELECT conversation (оба запроса видят version = 5, status = New)
+    API->>API: Conversation.Claim(A1) и Conversation.Claim(A2):<br/>инварианты C1–C2 выполнены
+    API->>DB: BEGIN, UPDATE … SET assignee = A1, status = InProgress,<br/>version = 6 WHERE id = @id AND version = 5
     DB-->>API: 1 row
-    API->>DB: UPDATE ... SET assignee = A2 ... WHERE ...
-    DB-->>API: 0 rows
-    API-->>A1: 200 OK
+    API->>DB: INSERT assignment_history (Claim), status_history (New → InProgress),<br/>outbox (ConversationClaimed), COMMIT
+    API->>DB: BEGIN, UPDATE … SET assignee = A2 … WHERE id = @id AND version = 5
+    DB-->>API: 0 rows → ROLLBACK
+    API-->>A1: 200 OK, ETag: v6
     API-->>A2: 409 Conflict
 ```
 
@@ -252,20 +319,28 @@ sequenceDiagram
     Note over DB: ConversationOpened уже в outbox
     W->>DB: dispatch ConversationOpened
     W->>DB: INSERT ai.suggestions (Classification, Requested,<br/>InputUpToSeq = 1) ON CONFLICT DO NOTHING
-    W->>DB: AI Job Processor: claim Requested (SKIP LOCKED)
-    W->>AI: classify(messages ≤ seq 1) [timeout, retry]
+    W->>DB: AI Job Processor: claim Requested (SKIP LOCKED) →<br/>Processing, LeaseUntil, Attempts + 1, COMMIT
+    W->>DB: Conversations.Contracts: GetMessages(convId, upToSeq = 1)
+    W->>AI: classify(messages ≤ seq 1) [timeout, вне транзакции]
     alt успех
         AI-->>W: category + confidence
-        W->>DB: suggestion → Completed
+        W->>DB: → Completed WHERE status = Processing AND attempts = @my
+    else ошибка, попытки остались
+        W->>DB: → Requested (retry с backoff)
     else отказ после N попыток
         W->>DB: suggestion → Failed
-        Note over W,DB: Обращение обрабатывается без AI (§4.3)
+        Note over W,DB: Обращение обрабатывается без AI (§4.3).<br/>Agent может запросить Retry (ADR-0009)
     end
     Ag->>API: GET /conversations/{id}/suggestions
     API-->>Ag: suggestion (помечено как AI, FR-020)
     Ag->>API: PUT /conversations/{id}/category<br/>{categoryId, basedOnSuggestionId}, If-Match: v7
+    API->>API: Conversation.ChangeCategory(categoryId, suggestionId)
     API->>DB: UPDATE conversation WHERE version = 7<br/>+ outbox CategoryChanged
-    API-->>Ag: 200 OK, ETag: v8
+    alt версия совпала
+        API-->>Ag: 200 OK, ETag: v8
+    else обращение изменилось
+        API-->>Ag: 412 Precondition Failed
+    end
     W->>DB: AI Decision Handler → Decision = Accepted
 ```
 
@@ -284,7 +359,8 @@ src/
     SupportFlow.BuildingBlocks/         # Outbox, inbox, UoW, базовые типы domain events
   Modules/
     Conversations/
-      SupportFlow.Conversations/        # Domain + Application + Infrastructure + Endpoints
+      SupportFlow.Conversations/        # папки Domain / Application / Infrastructure /
+                                        #       Endpoints / EventHandlers
       SupportFlow.Conversations.Contracts/
     SupportOrganization/ …
     Identity/ …
@@ -293,9 +369,11 @@ src/
     Audit/ …
     Reporting/ …
 tests/
-  SupportFlow.ArchitectureTests/        # Проверка правил границ модулей
+  SupportFlow.ArchitectureTests/        # Границы модулей и направление зависимостей слоёв
   SupportFlow.<Module>.Tests/
 ```
 
 Один проект на модуль и отдельный `.Contracts` — минимальная структура, при которой правило «зависеть
-только от Contracts» проверяет компилятор.
+только от Contracts» проверяет компилятор. Слои внутри модуля — папки, их зависимости проверяют
+архитектурные тесты ([architecture.md §3](architecture.md),
+[ADR-0013](../desicions/0013-module-internal-structure.md)).

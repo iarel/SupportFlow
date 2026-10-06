@@ -30,6 +30,12 @@
 - `Conversation` хранит `MessageCount` и `LastMessageSeq` и через `RegisterMessage(author)` проверяет
   инварианты: лимит, статус не `Closed`, автор имеет право писать.
 - `Message` — неизменяемый агрегат со ссылкой на `ConversationId`.
+- Транзакция отправки загружает `Conversation` через `SELECT … FOR UPDATE`, вызывает `RegisterMessage`,
+  сохраняет `Conversation` и создаёт `Message`. Блокировка строки держится только до COMMIT и сериализует
+  конкурентные отправки в одно обращение.
+- Если клиентское сообщение приходит в статусе `WaitingOnCustomer` или `Resolved`, `RegisterMessage`
+  переводит обращение в `InProgress` (domain-model §3.4). `StatusHistory` и `ConversationStatusChanged`
+  пишутся в той же транзакции.
 - Отправка сообщения — **единственное осознанное исключение** из правила «один агрегат на транзакцию».
 
 ## Trade-offs

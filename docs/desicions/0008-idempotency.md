@@ -30,13 +30,23 @@
 | Операция | Ключ идемпотентности |
 |---|---|
 | Создание обращения | `Idempotency-Key` → `UNIQUE (CustomerId, IdempotencyKey)` |
-| Отправка сообщения | `Idempotency-Key` → `UNIQUE (ConversationId, IdempotencyKey)` |
+| Отправка сообщения | `Idempotency-Key` → `UNIQUE (ConversationId, AuthorId, IdempotencyKey)` |
 | Обработчик integration event | Inbox: `UNIQUE (HandlerName, EventId)` в той же транзакции, что и эффект обработчика |
-| AI-запрос | `UNIQUE (ConversationId, Kind, InputUpToSeq)` |
-| Уведомление | `UNIQUE (SourceEventId)` |
+| AI-запрос | `UNIQUE (ConversationId, Kind, InputUpToSeq)`. Повтор после `Failed` переиспользует ту же запись (ADR-0009) |
+| Уведомление | `UNIQUE (SourceEventId)`. `NotificationId` передаётся провайдеру как его idempotency key |
 | Audit | `UNIQUE (SourceEventId)` |
 
-При повторе с тем же ключом API возвращает уже созданный ресурс.
+При повторе с тем же ключом API возвращает уже созданный ресурс того же автора.
+
+Порядок проверки при создании обращения и отправке сообщения:
+1. Поиск существующей записи по ключу. Если найдена — вернуть её, ничего не изменяя (и не расходуя лимиты
+   ADR-0012).
+2. Иначе — обычная транзакция команды.
+3. Если INSERT нарушил ограничение уникальности (конкурентный повтор прошёл шаг 1 одновременно), транзакция
+   откатывается целиком, включая изменение `Conversation`, и API возвращает запись, созданную первым
+   запросом.
+
+`AuthorId` входит в ключ сообщения, чтобы повтор чужого ключа не возвращал сообщение другого автора.
 
 ## Trade-offs
 

@@ -5,7 +5,8 @@
 > в `docs/desicions/`.
 >
 > Связанные документы: [containers.md](containers.md) · [components.md](components.md) ·
-> [domain-model.md](../domain-model.md) · [requiremenets.md](../requiremenets.md)
+> [architecture.md](architecture.md) · [domain-model.md](../domain-model.md) ·
+> [requiremenets.md](../requiremenets.md)
 
 ## Легенда
 

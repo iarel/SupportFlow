@@ -8,8 +8,9 @@
 ## Problem
 
 Supervisor нужны operational reports (обращения по статусам, категориям и приоритетам, нагрузка агентов,
-время обработки) и workload. Данные для них принадлежат модулю Conversations, а правила ADR-0002 запрещают
-другим модулям читать его таблицы.
+время обработки) и workload. Данные для них принадлежат модулям Conversations (обращения, история) и
+Support Organization (сотрудники, команды, зона ответственности Supervisor), а правила ADR-0002 запрещают
+другим модулям читать их таблицы.
 
 ## Constraints
 
@@ -19,16 +20,22 @@ Supervisor нужны operational reports (обращения по статус�
 
 ## Options
 
-1. Reporting читает внутренние таблицы Conversations напрямую.
-2. Conversations публикует read-only SQL views в схеме `reporting` как часть своего контракта.
+1. Reporting читает внутренние таблицы модулей напрямую.
+2. Модули-владельцы публикуют read-only SQL views в схеме `reporting` как часть своего контракта.
 3. Reporting строит собственные projection-таблицы из integration events.
 
 ## Decision
 
 Вариант 2.
-- Views (`reporting.conversations_by_status`, `reporting.agent_workload`, `reporting.status_durations` и
-  т. п.) создаются миграциями модуля Conversations и версионируются как контракт.
-- Модуль Reporting читает только схему `reporting`.
+- Conversations публикует `reporting.conversations_by_status`, `reporting.agent_workload`,
+  `reporting.status_durations` и т. п.
+- Support Organization публикует `reporting.staff_members` (сотрудник, команда, активность) и
+  `reporting.team_supervisors` (зона ответственности Supervisor).
+- Каждая view создаётся миграциями модуля-владельца и версионируется как его контракт.
+- Модуль Reporting читает только схему `reporting` и может соединять (JOIN) views разных модулей. Это
+  единственное разрешённое исключение из запрета cross-schema JOIN (ADR-0002).
+- Каждый отчёт фильтруется по командам текущего Supervisor и по периоду. Запросы без ограничения периода
+  не допускаются (§10).
 - Workload вычисляется запросом по индексу `(assignee_id, status)`, а не хранится счётчиком.
 
 ## Trade-offs

@@ -92,8 +92,8 @@ flowchart LR
     LLM[/"AI Provider<br/>(External)"/]
     NP[/"Notification Provider<br/>(External)"/]
 
-    IAM -- "UserId, Role<br/>(Conformist)" --> CONV
-    IAM -- "UserId, Role" --> ORG
+    IAM -- "UserId, AccountType<br/>(Conformist)" --> CONV
+    IAM -- "UserId, AccountType" --> ORG
     ORG -- "IsActiveMemberOf / SupervisedTeams<br/>(Customer–Supplier, sync query)" --> CONV
 
     CONV -- "Integration events<br/>(Published Language, outbox)" --> AI
@@ -159,7 +159,7 @@ erDiagram
         string AuthorType "Customer | Agent | System"
         uuid AuthorId "nullable for System"
         text Body "<= 10 KB"
-        string IdempotencyKey "unique within conversation"
+        string IdempotencyKey "unique per (ConversationId, AuthorId)"
         uuid BasedOnSuggestionId "nullable, ref AI Assistance"
         timestamptz CreatedAt
     }
@@ -230,14 +230,16 @@ erDiagram
 | `RegisterMessage(author)` → `Seq` | Customer, Agent | `MessagePosted` (вместе с созданием Message) |
 
 **Почему текущий Assignee хранится в Conversation, а не только в Assignment:**
-требование «два сотрудника не должны одновременно успешно взять одно обращение» тогда выполняется одним
-условным UPDATE:
+требование «два сотрудника не должны одновременно успешно взять одно обращение» тогда выполняется проверкой
+в агрегате (`Claim()` разрешён только из `New` без Assignee) и одним условным UPDATE по версии
+([ADR-0006](desicions/0006-claim-via-conditional-update.md)):
 
 ```sql
+-- после Conversation.Claim(agentId) на загруженном агрегате с version = @loaded
 UPDATE conversations
 SET assignee_id = @agent, status = 'InProgress', version = version + 1
-WHERE id = @id AND status = 'New' AND assignee_id IS NULL;
--- 0 rows → 409 Conflict (кто-то успел раньше)
+WHERE id = @id AND version = @loaded;
+-- 0 rows → 409 Conflict (обращение изменилось, кто-то успел раньше)
 ```
 
 Если бы Assignment был единственным источником истины (отдельные строки назначений), инвариант «не больше
@@ -273,14 +275,16 @@ WHERE id = @id AND status = 'New' AND assignee_id IS NULL;
 **Порядок сообщений (§4.6):**
 - Порядок определяется **только `Seq`**, а не `CreatedAt`. Часы разных instance не синхронизированы, и
   одинаковые timestamps неизбежны.
-- Конкурентные отправки в одно обращение сериализуются на строке `Conversation` (UPDATE `LastMessageSeq`).
+- Конкурентные отправки в одно обращение сериализуются на строке `Conversation`: транзакция отправки
+  загружает её через `SELECT … FOR UPDATE` ([ADR-0004](desicions/0004-conversation-and-message-aggregates.md)).
   В среднем в обращении ~7 сообщений, а поток на одно обращение измеряется единицами в минуту, поэтому
   contention пренебрежимо мал.
 - Итоговое правило для пользователя: **сообщения упорядочены в порядке коммита их регистрации в обращении**.
 
 **Дубли из-за retry (§4.5):**
-клиент передаёт `IdempotencyKey`. Уникальность `(ConversationId, IdempotencyKey)` гарантирует, что повтор
-вернёт уже созданное сообщение, а не второе. Если retry прошёл после успешного коммита, ответом будет
+клиент передаёт `IdempotencyKey`. Уникальность `(ConversationId, AuthorId, IdempotencyKey)` гарантирует, что
+повтор вернёт уже созданное сообщение того же автора, а не второе
+([ADR-0008](desicions/0008-idempotency.md)). Если retry прошёл после успешного коммита, ответом будет
 тот же `Message`.
 
 **Связь с AI:** `BasedOnSuggestionId` фиксирует, что Agent отправил ответ на основе AI-черновика. Автором
@@ -326,7 +330,7 @@ stateDiagram-v2
 
 | Правило | Где обеспечивается | Почему не в агрегате |
 |---|---|---|
-| ≤ 10 обращений от Customer в сутки | Rate limiter (application/infra) | Это правило о множестве агрегатов. Его проверка в домене потребовала бы транзакции по всем обращениям клиента. Это защита от нагрузки (§4.7), а не бизнес-правило. |
+| ≤ 10 обращений от Customer в сутки | Application: `COUNT` под advisory lock клиента в транзакции создания ([ADR-0012](desicions/0012-rate-limiting.md)) | Это правило о множестве агрегатов. Его проверка в домене потребовала бы транзакции по всем обращениям клиента. Это защита от нагрузки (§4.7), а не бизнес-правило. |
 | ≤ 1 сообщения в секунду от Customer | Rate limiter | То же. |
 | Agent активен и состоит в команде обращения | Application service через запрос к Support Organization | Данные другого контекста. Проверка выполняется до вызова агрегата, а редкая гонка допустима. |
 | Размер сообщения ≤ 10 KB | **Домен** (value object `MessageBody`) и лимит на размер request | Это как раз инвариант сообщения, но дополнительно ограничивается и на входе. |
@@ -353,7 +357,7 @@ erDiagram
     STAFF_MEMBER {
         uuid Id PK "= UserId from Identity"
         string DisplayName
-        string Roles "Agent, Supervisor"
+        string Roles "Agent, Supervisor — source of truth"
         uuid TeamId "nullable for pure Supervisor"
         bool IsActive
     }
@@ -395,7 +399,7 @@ erDiagram
     USER_ACCOUNT {
         uuid Id PK
         string ExternalSubject "IdP subject"
-        string Roles "Customer | Agent | Supervisor"
+        string AccountType "Customer | Staff"
         bool IsActive
     }
     CUSTOMER_PROFILE {
@@ -411,6 +415,10 @@ erDiagram
   транзакционно**: никакой инвариант обращения не требует загрузки клиента. Поэтому Conversation ссылается
   на `CustomerId` по ID, а `Customer` не становится агрегатом, содержащим Conversation. Связь
   «Customer owns Conversation» реализуется как авторизационная проверка `Conversation.CustomerId == currentUser`.
+- **Роли хранятся в одном месте.** `UserAccount` знает только тип учётной записи (`Customer` или `Staff`).
+  Роли сотрудника (Agent, Supervisor) и его команда принадлежат `StaffMember` в Support Organization:
+  это данные домена, которые меняются администрированием поддержки, а не учётными записями. Авторизация
+  по ролям сотрудника читает их через `SupportOrganization.Contracts`.
 - `CustomerProfile` хранит контактные данные для Notifications. Profile отделён от учётной записи, чтобы
   контекст Notifications зависел от контактов, а не от механизма аутентификации.
 
@@ -425,8 +433,9 @@ erDiagram
         uuid Id PK
         uuid ConversationId "ref Conversations"
         string Kind "Classification | Priority | Summary | ReplyDraft"
-        string Status "Requested | Completed | Failed"
+        string Status "Requested | Processing | Completed | Failed"
         bigint InputUpToSeq "snapshot boundary"
+        timestamptz LeaseUntil "nullable, while Processing"
         jsonb Result "typed per Kind"
         string ModelVersion
         string PromptVersion
@@ -455,8 +464,9 @@ erDiagram
 |---|---|
 | A1 | `Result` задаётся один раз при переходе `Requested → Completed` и далее неизменяем. |
 | A2 | `Decision` можно выставить только для `Completed`, и только Staff Member. |
-| A3 | Уникальность `(ConversationId, Kind, InputUpToSeq)`: повторная обработка того же события не создаёт второй запрос к AI (§4.4, защита от повторной обработки). |
+| A3 | Уникальность `(ConversationId, Kind, InputUpToSeq)`: повторная обработка того же события не создаёт второй запрос к AI (§4.4, защита от повторной обработки). Повтор после `Failed` переиспользует ту же запись (`Retry`: `Failed → Requested`). |
 | A4 | `Attempts ≤ MaxAttempts`, после чего `Failed`. Retry не должен неконтролируемо увеличивать нагрузку (§4.4). |
+| A5 | Результат принимается только от владельца текущего lease: `Status = Processing` и `Attempts` совпадает с номером попытки исполнителя ([ADR-0003](desicions/0003-transactional-outbox-postgresql-queue.md)). |
 
 **Обоснование ключевых решений:**
 - **FR-020 обеспечивается структурно.** Решения человека живут в `Conversation` (Category, Priority) и в
@@ -489,9 +499,10 @@ erDiagram
         string Type "AgentReplied | ConversationResolved | ..."
         string Channel
         string RecipientAddress "snapshot"
-        string Status "Pending | Sent | Failed | Abandoned"
+        string Status "Pending | Processing | Sent | Failed | Abandoned"
         int Attempts
         timestamptz NextAttemptAt
+        timestamptz LeaseUntil "nullable, while Processing"
         timestamptz SentAt "nullable"
     }
 ```
@@ -503,6 +514,9 @@ erDiagram
 - **`RecipientAddress` хранится как снимок**, чтобы повторная отправка не зависела от доступности Identity
   и адрес доставки не менялся задним числом.
 - Retry с exponential backoff и `NextAttemptAt`, после N попыток — `Abandoned` (§4.4).
+- Отправка берётся по lease (`Pending → Processing`, `LeaseUntil`) и выполняется вне транзакции
+  ([ADR-0003](desicions/0003-transactional-outbox-postgresql-queue.md)). `Id` уведомления передаётся
+  провайдеру как idempotency key, чтобы повтор после сбоя не дублировал уведомление клиенту.
 - **Значимые события [Assumption]:** `MessagePosted` с `AuthorType = Agent`,
   `ConversationStatusChanged → Resolved | Closed`.
 
@@ -614,9 +628,9 @@ flowchart TB
 
 | Операция | Уровень | Механизм |
 |---|---|---|
-| Claim обращения | Strong | Условный UPDATE (`status = 'New' AND assignee_id IS NULL`), при 0 rows → 409 |
-| Assign / Reassign / смена статуса, категории, приоритета | Strong | Optimistic concurrency: `Version` передаётся клиентом (`If-Match`/ETag), при несовпадении → 409. Конкурентные изменения не затирают друг друга. |
-| Отправка сообщения | Strong (порядок, лимит), idempotent | Одна транзакция: UPDATE Conversation (`LastMessageSeq++`) + INSERT Message. Уникальность `IdempotencyKey`. |
+| Claim обращения | Strong | `Conversation.Claim()` + условный UPDATE по загруженной `Version`, при 0 rows → 409 |
+| Assign / Reassign / смена статуса, категории, приоритета | Strong | Optimistic concurrency: `Version` передаётся клиентом (`If-Match`/ETag), при несовпадении → 412, без `If-Match` → 428. Конкурентные изменения не затирают друг друга. |
+| Отправка сообщения | Strong (порядок, лимит), idempotent | Одна транзакция: `SELECT … FOR UPDATE` Conversation → `RegisterMessage` (`LastMessageSeq++`) + INSERT Message. Уникальность `(ConversationId, AuthorId, IdempotencyKey)`. |
 | Создание обращения | Idempotent | `IdempotencyKey` на уровне Customer |
 | Domain → integration events | At-least-once | Transactional outbox. Потребители дедуплицируют по `SourceEventId`. |
 | AI result → AISuggestion | Eventual, idempotent | A3: уникальность `(ConversationId, Kind, InputUpToSeq)` |
@@ -631,7 +645,8 @@ flowchart TB
   `reporting`). Cross-schema FK не создаются, связи существуют только по ID (§12.2).
 - На Stage 1 таблицы не партиционируются. Если партиционирование `messages` понадобится, учесть:
   в PostgreSQL уникальные индексы партиционированной таблицы обязаны включать ключ партиционирования,
-  а на `messages` есть уникальные ключи `(conversation_id, seq)` и `(conversation_id, idempotency_key)`.
+  а на `messages` есть уникальные ключи `(conversation_id, seq)` и
+  `(conversation_id, author_id, idempotency_key)`.
 - **Единица retention** — обращение целиком: Conversation, Messages, History и AISuggestions.
 
 ---
@@ -659,5 +674,7 @@ flowchart TB
 - [ADR-0008](desicions/0008-idempotency.md): идемпотентность
 - [ADR-0009](desicions/0009-ai-assistance-separate-context.md): AI Assistance как отдельный контекст
 - [ADR-0010](desicions/0010-reporting-read-only-views.md): Reporting через read-only views
+- [ADR-0013](desicions/0013-module-internal-structure.md): внутреннее устройство модуля
 
-Полный реестр: [desicions/README.md](desicions/README.md). Архитектура: [architecture/](architecture/context.md).
+Полный реестр: [desicions/README.md](desicions/README.md). Архитектура: [architecture/](architecture/context.md),
+внутреннее устройство модулей — [architecture.md](architecture/architecture.md).
