@@ -6,13 +6,14 @@ namespace SupportFlow.BuildingBlocks.Outbox;
 /// </summary>
 public sealed class OutboxMessage
 {
-    public OutboxMessage(Guid id, string type, string payload, DateTimeOffset createdAt)
+    public OutboxMessage(Guid id, string type, string payload, DateTimeOffset createdAt, string? traceParent)
     {
         Id = id;
         Type = type;
         Payload = payload;
         CreatedAt = createdAt;
         NextAttemptAt = createdAt;
+        TraceParent = traceParent;
     }
 
     public Guid Id { get; private set; }
@@ -28,6 +29,11 @@ public sealed class OutboxMessage
     public string Payload { get; private set; }
 
     public DateTimeOffset CreatedAt { get; private set; }
+
+    /// <summary>
+    /// W3C <c>traceparent</c> of the request that wrote the event, so delivery continues its trace.
+    /// </summary>
+    public string? TraceParent { get; private set; }
 
     /// <summary>
     /// Delivery attempts started, including one in progress.

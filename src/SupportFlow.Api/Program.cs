@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Diagnostics;
 using SupportFlow.Api;
 using SupportFlow.BuildingBlocks.Persistence;
 using SupportFlow.Modules.AIAssistance;
@@ -7,8 +8,10 @@ using SupportFlow.Modules.Identity;
 using SupportFlow.Modules.Notifications;
 using SupportFlow.Modules.Reporting;
 using SupportFlow.Modules.SupportOrganization;
+using SupportFlow.ServiceDefaults;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.AddServiceDefaults();
 
 // ADR-0011: Bearer JWT of the external Identity Provider, settings in Authentication:Schemes:Bearer. Claims keep
 // their JWT names ("sub"), which the Identity module maps to the user account (ADR-0016).
@@ -32,9 +35,16 @@ if (app.Environment.IsDevelopment())
     await app.Services.MigrateDatabasesAsync(app.Lifetime.ApplicationStopping);
 }
 
-app.UseExceptionHandler();
+// Exceptions turned into responses by ApplicationExceptionHandler (422, 429, 503, …) are expected outcomes, not
+// errors to log.
+app.UseExceptionHandler(new ExceptionHandlerOptions
+{
+    SuppressDiagnosticsCallback = context => context.ExceptionHandledBy == ExceptionHandledType.ExceptionHandlerService,
+});
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.MapHealthEndpoints();
 
 app.MapConversationsEndpoints();
 app.MapSupportOrganizationEndpoints();
@@ -44,8 +54,3 @@ app.MapAuditEndpoints();
 app.MapReportingEndpoints();
 
 await app.RunAsync();
-
-/// <summary>
-/// Entry point, public for <c>WebApplicationFactory</c> in API tests.
-/// </summary>
-public partial class Program;

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
@@ -81,8 +82,44 @@ public sealed class OutboxDispatcher<TContext>(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<OutboxBacklog> ObserveBacklogAsync(CancellationToken cancellationToken)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<TContext>();
+        var outbox = context.Set<OutboxMessage>().AsNoTracking();
+
+        var oldestPending = await outbox
+            .Where(m => m.ProcessedAt == null && m.FailedAt == null)
+            .MinAsync(m => (DateTimeOffset?)m.CreatedAt, cancellationToken);
+        var parked = await outbox.LongCountAsync(m => m.FailedAt != null, cancellationToken);
+
+        var lag = oldestPending is { } createdAt ? timeProvider.GetUtcNow() - createdAt : TimeSpan.Zero;
+        var outboxTag = new KeyValuePair<string, object?>(OutboxTelemetry.OutboxTag, context.Model.GetDefaultSchema());
+        OutboxTelemetry.Lag.Record(Math.Max(0, lag.TotalSeconds), outboxTag);
+        OutboxTelemetry.ParkedNow.Record(parked, outboxTag);
+
+        return new OutboxBacklog(lag, parked);
+    }
+
     private async Task DeliverAsync(OutboxMessage message, CancellationToken cancellationToken)
     {
+        // Continues the trace of the request that published the event (containers.md, Observability).
+        var parent = ActivityContext.TryParse(message.TraceParent, null, out var published) ? published : default;
+        using var activity = OutboxTelemetry.ActivitySource.StartActivity(
+            $"deliver {message.Type}",
+            ActivityKind.Consumer,
+            parent);
+        activity?.SetTag("messaging.system", "supportflow.outbox");
+        activity?.SetTag("messaging.operation.type", "process");
+        activity?.SetTag("messaging.message.id", message.Id);
+        activity?.SetTag("messaging.destination.name", message.Type);
+        activity?.SetTag("supportflow.outbox.attempt", message.Attempts);
+
+        var correlationId = activity?.TraceId.ToHexString()
+            ?? (parent != default ? parent.TraceId.ToHexString() : null);
+        var eventTypeTag = new KeyValuePair<string, object?>(OutboxTelemetry.EventTypeTag, message.Type);
+        var started = timeProvider.GetTimestamp();
+
         try
         {
             if (!types.TryGetType(message.Type, out var eventType))
@@ -98,14 +135,18 @@ public sealed class OutboxDispatcher<TContext>(
                 await DelivererFor(eventType)(
                     scope.ServiceProvider,
                     integrationEvent,
-                    new IntegrationEventContext(message.Id),
+                    new IntegrationEventContext(message.Id, correlationId),
                     cancellationToken);
             }
 
             await CompleteAsync(message, cancellationToken);
+            OutboxTelemetry.DeliveryDuration.Record(timeProvider.GetElapsedTime(started).TotalSeconds, eventTypeTag);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
+            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.AddException(exception);
+            OutboxTelemetry.DeliveryFailures.Add(1, eventTypeTag);
             await FailAsync(message, exception, cancellationToken);
         }
     }
@@ -136,6 +177,7 @@ public sealed class OutboxDispatcher<TContext>(
         if (message.Attempts >= options.MaxAttempts)
         {
             OutboxLog.Parked(logger, exception, message.Id, message.Type, message.Attempts);
+            OutboxTelemetry.Parked.Add(1, new KeyValuePair<string, object?>(OutboxTelemetry.EventTypeTag, message.Type));
 
             await UpdateLeasedAsync(
                 message,

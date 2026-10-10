@@ -7,6 +7,7 @@
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/SupportFlow.Api/SupportFlow.Api.csproj" />
+    <Project Path="src/SupportFlow.ServiceDefaults/SupportFlow.ServiceDefaults.csproj" />
     <Project Path="src/SupportFlow.Worker/SupportFlow.Worker.csproj" />
   </Folder>
   <Folder Name="/src/BuildingBlocks/">

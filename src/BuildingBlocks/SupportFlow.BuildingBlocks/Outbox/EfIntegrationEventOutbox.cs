@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using SupportFlow.BuildingBlocks.Application;
 
@@ -21,6 +22,7 @@ public sealed class EfIntegrationEventOutbox(DbContext context, IntegrationEvent
             Guid.CreateVersion7(now),
             types.GetName(integrationEvent.GetType()),
             IntegrationEventSerializer.Serialize(integrationEvent),
-            now));
+            now,
+            Activity.Current?.Id));
     }
 }

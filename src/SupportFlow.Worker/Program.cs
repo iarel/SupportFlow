@@ -8,9 +8,12 @@ using SupportFlow.Modules.Identity;
 using SupportFlow.Modules.Notifications;
 using SupportFlow.Modules.Reporting;
 using SupportFlow.Modules.SupportOrganization;
+using SupportFlow.ServiceDefaults;
 using SupportFlow.Worker;
 
-var builder = Host.CreateApplicationBuilder(args);
+// The Worker serves HTTP only for health probes (containers.md, Observability).
+var builder = WebApplication.CreateSlimBuilder(args);
+builder.AddServiceDefaults();
 
 builder.Services
     .AddConversations(builder.Configuration)
@@ -28,5 +31,6 @@ builder.Services.TryAddSingleton(new RetentionOptions());
 builder.Services.AddHostedService<OutboxDispatcherService>();
 builder.Services.AddHostedService<RetentionCleanupService>();
 
-var host = builder.Build();
-await host.RunAsync();
+var app = builder.Build();
+app.MapHealthEndpoints();
+await app.RunAsync();

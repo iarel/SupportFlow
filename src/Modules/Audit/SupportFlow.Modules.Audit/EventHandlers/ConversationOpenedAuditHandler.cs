@@ -32,7 +32,8 @@ internal sealed class ConversationOpenedAuditHandler(RecordAuditHandler recordAu
                 Action: "ConversationOpened",
                 TargetType: "Conversation",
                 integrationEvent.ConversationId,
-                JsonSerializer.Serialize(new { teamId = integrationEvent.TeamId })),
+                JsonSerializer.Serialize(new { teamId = integrationEvent.TeamId }),
+                context.CorrelationId),
             cancellationToken);
     }
 }

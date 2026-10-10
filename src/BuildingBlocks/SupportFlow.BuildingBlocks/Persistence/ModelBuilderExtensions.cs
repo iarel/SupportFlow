@@ -44,6 +44,7 @@ public static class ModelBuilderExtensions
             builder.Property(m => m.Type).HasColumnName("type");
             builder.Property(m => m.Payload).HasColumnName("payload").HasColumnType("jsonb");
             builder.Property(m => m.CreatedAt).HasColumnName("created_at");
+            builder.Property(m => m.TraceParent).HasColumnName("trace_parent");
             builder.Property(m => m.Attempts).HasColumnName("attempts");
             builder.Property(m => m.NextAttemptAt).HasColumnName("next_attempt_at");
             builder.Property(m => m.LockedUntil).HasColumnName("locked_until");
@@ -56,6 +57,9 @@ public static class ModelBuilderExtensions
 
             // Cleanup of delivered events.
             builder.HasIndex(m => m.ProcessedAt);
+
+            // Parked events, counted for metrics.
+            builder.HasIndex(m => m.FailedAt).HasFilter("failed_at IS NOT NULL");
         });
 
         return modelBuilder;
