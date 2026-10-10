@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
+using SupportFlow.Modules.Conversations.Endpoints;
 
 namespace SupportFlow.Modules.Conversations;
 
@@ -8,7 +9,8 @@ public static class ConversationsEndpointRouteBuilderExtensions
 {
     public static IEndpointRouteBuilder MapConversationsEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapGroup("/conversations").WithTags("Conversations");
+        var conversations = endpoints.MapGroup("/conversations").WithTags("Conversations");
+        conversations.MapOpenConversation();
         return endpoints;
     }
 }

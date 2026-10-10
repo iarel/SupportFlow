@@ -58,7 +58,7 @@ tables).
 |---|---|---|
 | **Web Client** [Assumption] | SPA | UI для трёх ролей. В репозитории пока отсутствует. |
 | **SupportFlow API** | ASP.NET Core minimal API, .NET 10 | Все синхронные операции (команды и запросы). Проверка JWT, авторизация, rate limiting, idempotency, optimistic concurrency. Пишет domain changes и integration events в outbox одной транзакцией. |
-| **SupportFlow Worker** | .NET Worker Service | Доставка событий из outbox обработчикам, AI jobs, отправка уведомлений, периодические задачи (авто-закрытие `Resolved`, retention audit, очистка outbox/inbox). |
+| **SupportFlow Worker** | .NET Worker Service | Доставка событий из outbox обработчикам, AI jobs, отправка уведомлений, периодические задачи (авто-закрытие `Resolved`, retention audit, очистка outbox/inbox и ключей идемпотентности). |
 | **SupportFlow DB** | PostgreSQL | Единственное хранилище: данные модулей (schema per module), outbox, inbox, job tables. |
 
 ## Ключевые решения

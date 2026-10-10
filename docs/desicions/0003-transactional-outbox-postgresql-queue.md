@@ -33,6 +33,9 @@
 - Каждая команда в API коммитит изменение агрегата и integration events атомарно.
 - Outbox Dispatcher в Worker опрашивает `outbox` и вызывает обработчики in-process. Гарантия доставки:
   at-least-once.
+- Таблица `outbox` находится в схеме модуля-издателя (`conversations.outbox` и т. д.) и создаётся миграциями
+  этого модуля. Outbox Dispatcher опрашивает outbox каждого модуля, публикующего события. Порядок доставки
+  между модулями не гарантируется.
 - Обработчики идемпотентны за счёт inbox (ADR-0008).
 - Медленная работа отделена от обработки события: обработчик только создаёт job (`AISuggestion(Requested)`,
   `Notification(Pending)`), а исполняют их отдельные job processors с timeout, retry, backoff и

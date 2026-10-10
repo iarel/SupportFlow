@@ -148,7 +148,8 @@ RejectAISuggestion
 - загрузка нужных агрегатов через порты;
 - вызов доменного поведения;
 - управление транзакцией: **одна транзакция на команду, один агрегат на транзакцию**. Единственное
-  исключение — `PostMessage` ([ADR-0004](../desicions/0004-conversation-and-message-aggregates.md));
+  исключение — регистрация сообщения: `PostMessage` и первое сообщение в `OpenConversation`
+  ([ADR-0004](../desicions/0004-conversation-and-message-aggregates.md));
 - проверки, которым нужны данные других модулей (например, «Agent активен и состоит в команде»), через их
   `Contracts`;
 - проверки принадлежности (Customer владеет обращением, Supervisor отвечает за команду обращения);
@@ -236,8 +237,10 @@ Conversations ──▶ organization.* (таблицы)            ✘
 - Infrastructure содержит EF Core mappings, DbContext модуля, репозитории, SQL-запросы и, при
   необходимости, persistence-модели.
 - Read side (запросы, отчёты) может обходить доменную модель.
-- Ограничения уникальности, обеспечивающие идемпотентность (`IdempotencyKey`, inbox, `SourceEventId`),
-  принадлежат схеме модуля-владельца ([ADR-0008](../desicions/0008-idempotency.md)).
+- Механизмы идемпотентности принадлежат схеме модуля-владельца: таблица ключей HTTP-команд
+  ([ADR-0014](../desicions/0014-idempotency-keys-table.md)), inbox и `SourceEventId` обработчиков событий
+  ([ADR-0008](../desicions/0008-idempotency.md)). Агрегаты ключей HTTP-команд не содержат. Outbox также
+  принадлежит схеме модуля-издателя ([ADR-0003](../desicions/0003-transactional-outbox-postgresql-queue.md)).
 
 ---
 
@@ -265,7 +268,7 @@ Conversations ──▶ organization.* (таблицы)            ✘
 | Authorization по принадлежности | Application: нужны данные обращения и команд |
 | Rate limiting, короткие окна | Api host: in-memory `RateLimiter` ([ADR-0012](../desicions/0012-rate-limiting.md)) |
 | Rate limiting, суточный лимит обращений | Application, в транзакции создания обращения ([ADR-0012](../desicions/0012-rate-limiting.md)) |
-| Idempotency | Endpoints читают `Idempotency-Key`. Дубли отсекает ограничение уникальности в схеме модуля, в обработчиках событий — inbox ([ADR-0008](../desicions/0008-idempotency.md)) |
+| Idempotency | Endpoints читают `Idempotency-Key`. Application регистрирует ключ в таблице ключей модуля в транзакции команды ([ADR-0014](../desicions/0014-idempotency-keys-table.md)), в обработчиках событий — inbox ([ADR-0008](../desicions/0008-idempotency.md)) |
 | Optimistic concurrency | Endpoints читают `If-Match`. Проверка — при сохранении агрегата ([ADR-0007](../desicions/0007-optimistic-concurrency.md)) |
 | Validation | Endpoints — формат входа. Domain — инварианты (например, `MessageBody` ≤ 10 KB) |
 | Logging, tracing, metrics, correlation ID | Hosts и Infrastructure, OpenTelemetry |
@@ -329,8 +332,8 @@ API не содержит бизнес-логики. Endpoints не работа
 10. Application оркестрирует use cases и не реализует доменные правила.
 11. Внешние интеграции доступны только через порты.
 12. Сквозная функциональность не проникает в Domain.
-13. Каждое отступление от правил требует ADR. Действующие исключения: отправка сообщения изменяет два
-    агрегата в одной транзакции (ADR-0004); Reporting читает views, опубликованные другими модулями
+13. Каждое отступление от правил требует ADR. Действующие исключения: регистрация сообщения (отправка и
+    первое сообщение при открытии обращения) изменяет два агрегата в одной транзакции (ADR-0004); Reporting читает views, опубликованные другими модулями
     (ADR-0010).
 
 Правила 1–8 проверяются архитектурными тестами или компилятором.
