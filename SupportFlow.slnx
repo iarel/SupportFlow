@@ -44,5 +44,6 @@
   <Folder Name="/tests/">
     <Project Path="tests/SupportFlow.ArchitectureTests/SupportFlow.ArchitectureTests.csproj" />
     <Project Path="tests/SupportFlow.BuildingBlocks.Tests/SupportFlow.BuildingBlocks.Tests.csproj" />
+    <Project Path="tests/SupportFlow.Modules.SupportOrganization.IntegrationTests/SupportFlow.Modules.SupportOrganization.IntegrationTests.csproj" />
   </Folder>
 </Solution>
