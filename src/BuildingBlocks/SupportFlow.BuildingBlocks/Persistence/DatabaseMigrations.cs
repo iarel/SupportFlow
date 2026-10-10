@@ -12,7 +12,8 @@ public static class DatabaseMigrations
     }
 
     /// <summary>
-    /// Applies the migrations of all modules. How migrations are applied outside Development is not decided.
+    /// Applies the migrations of all modules: on API startup in Development, otherwise by the <c>migrate</c> deployment
+    /// step (ADR-0017).
     /// </summary>
     public static async Task MigrateDatabasesAsync(this IServiceProvider services, CancellationToken cancellationToken)
     {

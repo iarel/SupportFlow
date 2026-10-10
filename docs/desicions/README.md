@@ -30,6 +30,7 @@ ADR не редактируются задним числом. Если реше
 | [0014](0014-idempotency-keys-table.md) | Ключи идемпотентности HTTP-команд в отдельной таблице модуля | 1 | Proposed |
 | [0015](0015-integration-event-contracts.md) | Integration events — records в `Contracts`, `EventId` присваивает outbox | 1 | Proposed |
 | [0016](0016-user-account-mapping-jit-customer.md) | `UserAccount` по `(issuer, sub)`, JIT-создание Customer в модуле Identity | 1 | Proposed |
+| [0017](0017-deployment-images-and-migration-step.md) | Развёртывание: два образа, миграции отдельным шагом `migrate` | 1 | Proposed |
 
 ## Шаблон
 
