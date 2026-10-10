@@ -29,12 +29,15 @@
 
 | Операция | Ключ идемпотентности |
 |---|---|
-| Создание обращения | `Idempotency-Key` → `UNIQUE (CustomerId, IdempotencyKey)` |
-| Отправка сообщения | `Idempotency-Key` → `UNIQUE (ConversationId, AuthorId, IdempotencyKey)` |
+| Создание обращения | **Заменено [ADR-0014](0014-idempotency-keys-table.md).** Было: `Idempotency-Key` → `UNIQUE (CustomerId, IdempotencyKey)` |
+| Отправка сообщения | **Заменено [ADR-0014](0014-idempotency-keys-table.md).** Было: `Idempotency-Key` → `UNIQUE (ConversationId, AuthorId, IdempotencyKey)` |
 | Обработчик integration event | Inbox: `UNIQUE (HandlerName, EventId)` в той же транзакции, что и эффект обработчика |
 | AI-запрос | `UNIQUE (ConversationId, Kind, InputUpToSeq)`. Повтор после `Failed` переиспользует ту же запись (ADR-0009) |
 | Уведомление | `UNIQUE (SourceEventId)`. `NotificationId` передаётся провайдеру как его idempotency key |
 | Audit | `UNIQUE (SourceEventId)` |
+
+> Для создания обращения и отправки сообщения действует [ADR-0014](0014-idempotency-keys-table.md): ключи
+> хранятся в отдельной таблице модуля, а не в сущностях. Текст ниже — исходное решение, сохранено для истории.
 
 При повторе с тем же ключом API возвращает уже созданный ресурс того же автора.
 

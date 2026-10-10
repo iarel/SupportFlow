@@ -12,8 +12,8 @@
    проверки его инвариантов в одной транзакции. Всё остальное — отдельный агрегат со ссылкой по ID.
 2. **Между агрегатами — ссылки только по ID**, без навигационных свойств. Между bounded contexts — только
    по ID и через публичный контракт модуля (application API или integration events).
-3. **Одна транзакция — один агрегат**, за единственным осознанным исключением (Conversation + Message,
-   см. §3.3), обоснованным инвариантами порядка и лимитов сообщений.
+3. **Одна транзакция — один агрегат**, за единственным осознанным исключением (Conversation + Message
+   при отправке сообщения и открытии обращения, см. §3.3), обоснованным инвариантами порядка и лимитов сообщений.
 4. **Изменения состояния публикуются как domain events** через transactional outbox (§4.4 — надёжность,
    §4.3 — отказ AI/Notification Provider не должен ломать основной поток).
 5. **Согласованность определяется per operation** (§4.5): strong — внутри агрегата, eventual — между
@@ -139,11 +139,11 @@ erDiagram
         uuid Id PK
         uuid CustomerId "ref Identity"
         uuid TeamId "ref Support Organization (queue)"
-        string Subject
+        string Subject "required, trimmed, <= 200 chars [Assumption]"
         string Status "New | InProgress | WaitingOnCustomer | Resolved | Closed"
         uuid AssigneeId "nullable, ref Support Organization"
         uuid CategoryId "nullable"
-        string Priority "Low | Normal | High | Urgent"
+        string Priority "Low | Normal | High | Urgent, Normal on open"
         int MessageCount "<= 1000"
         bigint LastMessageSeq
         timestamptz CreatedAt
@@ -159,7 +159,6 @@ erDiagram
         string AuthorType "Customer | Agent | System"
         uuid AuthorId "nullable for System"
         text Body "<= 10 KB"
-        string IdempotencyKey "unique per (ConversationId, AuthorId)"
         uuid BasedOnSuggestionId "nullable, ref AI Assistance"
         timestamptz CreatedAt
     }
@@ -268,6 +267,9 @@ WHERE id = @id AND version = @loaded;
    и `MessageCount` и выдаёт `Seq`;
 2. создаёт `Message` с этим `Seq`.
 
+Так же устроено открытие обращения: `Conversation.Open` выдаёт первому сообщению `Seq = 1`, и `Message`
+создаётся в той же транзакции.
+
 Это допустимо, потому что оба агрегата принадлежат одному контексту и одной БД, а инварианты порядка (C6)
 и лимита (C4) по сути принадлежат Conversation. Альтернатива — eventual consistency, когда Message создаётся
 первым, а счётчик обновляется асинхронно. Она не позволяет гарантировать ни лимит, ни однозначный порядок.
@@ -282,10 +284,10 @@ WHERE id = @id AND version = @loaded;
 - Итоговое правило для пользователя: **сообщения упорядочены в порядке коммита их регистрации в обращении**.
 
 **Дубли из-за retry (§4.5):**
-клиент передаёт `IdempotencyKey`. Уникальность `(ConversationId, AuthorId, IdempotencyKey)` гарантирует, что
-повтор вернёт уже созданное сообщение того же автора, а не второе
-([ADR-0008](desicions/0008-idempotency.md)). Если retry прошёл после успешного коммита, ответом будет
-тот же `Message`.
+клиент передаёт `Idempotency-Key`. Ключ относится к HTTP-команде, а не к сущности: он хранится в таблице
+ключей модуля и записывается в той же транзакции, что и сообщение
+([ADR-0014](desicions/0014-idempotency-keys-table.md)). Повтор после успешного коммита возвращает уже созданное
+сообщение, а не второе. Ни `Conversation`, ни `Message` ключа не содержат.
 
 **Связь с AI:** `BasedOnSuggestionId` фиксирует, что Agent отправил ответ на основе AI-черновика. Автором
 всё равно остаётся Agent, потому что отправку выполняет человек (§2.4). Это даёт трассируемость для FR-020
@@ -398,7 +400,8 @@ erDiagram
 
     USER_ACCOUNT {
         uuid Id PK
-        string ExternalSubject "IdP subject"
+        string ExternalIssuer "IdP issuer"
+        string ExternalSubject "IdP subject, unique with ExternalIssuer"
         string AccountType "Customer | Staff"
         bool IsActive
     }
@@ -421,6 +424,8 @@ erDiagram
   по ролям сотрудника читает их через `SupportOrganization.Contracts`.
 - `CustomerProfile` хранит контактные данные для Notifications. Profile отделён от учётной записи, чтобы
   контекст Notifications зависел от контактов, а не от механизма аутентификации.
+- `UserAccount` типа Customer создаётся при первом аутентифицированном запросе (JIT), Staff — только явно
+  ([ADR-0016](desicions/0016-user-account-mapping-jit-customer.md)).
 
 ---
 
@@ -619,8 +624,8 @@ flowchart TB
     AE -. TargetId .-> C
 ```
 
-Все связи между агрегатами являются **ссылками по ID**. Ни одна операция, кроме отправки сообщения (§3.3),
-не изменяет больше одного агрегата в транзакции.
+Все связи между агрегатами являются **ссылками по ID**. Ни одна операция, кроме регистрации сообщения (отправка и открытие
+обращения, §3.3), не изменяет больше одного агрегата в транзакции.
 
 ---
 
@@ -630,8 +635,8 @@ flowchart TB
 |---|---|---|
 | Claim обращения | Strong | `Conversation.Claim()` + условный UPDATE по загруженной `Version`, при 0 rows → 409 |
 | Assign / Reassign / смена статуса, категории, приоритета | Strong | Optimistic concurrency: `Version` передаётся клиентом (`If-Match`/ETag), при несовпадении → 412, без `If-Match` → 428. Конкурентные изменения не затирают друг друга. |
-| Отправка сообщения | Strong (порядок, лимит), idempotent | Одна транзакция: `SELECT … FOR UPDATE` Conversation → `RegisterMessage` (`LastMessageSeq++`) + INSERT Message. Уникальность `(ConversationId, AuthorId, IdempotencyKey)`. |
-| Создание обращения | Idempotent | `IdempotencyKey` на уровне Customer |
+| Отправка сообщения | Strong (порядок, лимит), idempotent | Одна транзакция: `SELECT … FOR UPDATE` Conversation → `RegisterMessage` (`LastMessageSeq++`) + INSERT Message. Ключ идемпотентности — в таблице ключей модуля (ADR-0014). |
+| Создание обращения | Idempotent | Ключ идемпотентности в таблице ключей модуля, scope — вызывающий клиент и операция (ADR-0014) |
 | Domain → integration events | At-least-once | Transactional outbox. Потребители дедуплицируют по `SourceEventId`. |
 | AI result → AISuggestion | Eventual, idempotent | A3: уникальность `(ConversationId, Kind, InputUpToSeq)` |
 | Accept AI suggestion → Decision | Eventual | Событие `…Changed { basedOnSuggestionId }` |
@@ -645,8 +650,8 @@ flowchart TB
   `reporting`). Cross-schema FK не создаются, связи существуют только по ID (§12.2).
 - На Stage 1 таблицы не партиционируются. Если партиционирование `messages` понадобится, учесть:
   в PostgreSQL уникальные индексы партиционированной таблицы обязаны включать ключ партиционирования,
-  а на `messages` есть уникальные ключи `(conversation_id, seq)` и
-  `(conversation_id, author_id, idempotency_key)`.
+  а на `messages` есть уникальный ключ `(conversation_id, seq)`. Ключи идемпотентности хранятся отдельно
+  (ADR-0014) и партиционированию не мешают.
 - **Единица retention** — обращение целиком: Conversation, Messages, History и AISuggestions.
 
 ---
@@ -672,6 +677,7 @@ flowchart TB
 - [ADR-0006](desicions/0006-claim-via-conditional-update.md): claim через условный UPDATE
 - [ADR-0007](desicions/0007-optimistic-concurrency.md): optimistic concurrency
 - [ADR-0008](desicions/0008-idempotency.md): идемпотентность
+- [ADR-0014](desicions/0014-idempotency-keys-table.md): ключи идемпотентности HTTP-команд
 - [ADR-0009](desicions/0009-ai-assistance-separate-context.md): AI Assistance как отдельный контекст
 - [ADR-0010](desicions/0010-reporting-read-only-views.md): Reporting через read-only views
 - [ADR-0013](desicions/0013-module-internal-structure.md): внутреннее устройство модуля

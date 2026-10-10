@@ -72,7 +72,7 @@ flowchart TB
 | Authentication | Проверка JWT и сопоставление `sub` с `UserAccount` | [0011](../desicions/0011-external-identity-provider.md) |
 | Authorization | Policies по роли. Принадлежность (Customer видит только свои обращения, Supervisor — обращения своих команд) проверяет Application модуля: для этого нужны данные обращения | [0013](../desicions/0013-module-internal-structure.md) |
 | Rate Limiter | Короткие окна (1 msg/s, API requests) в памяти instance. Суточный лимит обращений и лимит AI requests проверяются в модулях | [0012](../desicions/0012-rate-limiting.md) |
-| Idempotency-Key | Только читает заголовок и передаёт ключ в команду. Дубли отсекает ограничение уникальности в схеме модуля | [0008](../desicions/0008-idempotency.md) |
+| Idempotency-Key | Только читает заголовок (нет или не UUID → 400) и передаёт ключ в команду. Дубли отсекает таблица ключей в схеме модуля | [0014](../desicions/0014-idempotency-keys-table.md) |
 | If-Match | Только читает заголовок (нет → 428) и передаёт ожидаемую версию в команду. Проверка — при сохранении агрегата (несовпадение → 412) | [0007](../desicions/0007-optimistic-concurrency.md) |
 | Модули | Бизнес-логика bounded contexts из domain-model. Внутреннее устройство — [architecture.md](architecture.md) | [0002](../desicions/0002-module-boundaries.md), [0013](../desicions/0013-module-internal-structure.md) |
 | Unit of Work + Outbox Writer | Изменение агрегата и integration event коммитятся атомарно | [0003](../desicions/0003-transactional-outbox-postgresql-queue.md) |
@@ -133,18 +133,20 @@ flowchart LR
 | Suggestions обращения | Последние по каждому `Kind` | — |
 | Отчёты | Обязательный период и фильтр по командам Supervisor (ADR-0010) | — |
 
-**Ограничения размера.** Тело запроса отправки сообщения — не больше 16 KB (сообщение ≤ 10 KB плюс
-метаданные) **[Assumption]**, остальные команды — не больше 4 KB **[Assumption]**. Превышение → `413`.
+**Ограничения размера.** Тело запроса отправки сообщения и создания обращения (содержит первое сообщение) — не
+больше 16 KB (сообщение ≤ 10 KB плюс метаданные) **[Assumption]**, остальные команды — не больше 4 KB
+**[Assumption]**. Превышение → `413`.
 
 **Коды ошибок.**
 
 | Код | Когда |
 |---|---|
-| `400` | Неверный формат запроса |
+| `400` | Неверный формат запроса, в том числе отсутствующий или не-UUID `Idempotency-Key` |
 | `403` | Нет прав на ресурс (чужое обращение, обращение вне команд Supervisor) |
 | `409` | Нарушение бизнес-правила или конфликт без `If-Match`: claim уже взят, недопустимый переход статуса, обращение `Closed`, лимит 1000 сообщений |
 | `412` | `If-Match` не совпадает с текущей `Version` ([ADR-0007](../desicions/0007-optimistic-concurrency.md)) |
 | `413` | Превышен размер запроса |
+| `422` | `Idempotency-Key` уже использован с другим телом запроса ([ADR-0014](../desicions/0014-idempotency-keys-table.md)) |
 | `428` | Команда изменения без `If-Match` |
 | `429` | Превышен rate limit, с `Retry-After` ([ADR-0012](../desicions/0012-rate-limiting.md)) |
 
@@ -221,8 +223,9 @@ handlers, job processors, scheduler) и контракты, через кото�
   `WHERE status = 'Processing' AND attempts = @myAttempt`. Job с истёкшим lease снова доступен другим
   instances. Notification Provider получает `NotificationId` как idempotency key: повторная отправка после
   сбоя не дублирует уведомление.
-- **Retention** ([§4.8](../requiremenets.md)). Scheduler удаляет `AuditEvent` старше ~1 года и доставленные
-  записи outbox/inbox. Архивация обращений старше ~3 лет на Stage 1 не реализована (см.
+- **Retention** ([§4.8](../requiremenets.md)). Scheduler удаляет `AuditEvent` старше ~1 года, доставленные
+  записи outbox/inbox и ключи идемпотентности старше 48 часов
+  ([ADR-0014](../desicions/0014-idempotency-keys-table.md)). Архивация обращений старше ~3 лет на Stage 1 не реализована (см.
   [containers.md](containers.md), известные ограничения).
 - **Inbox** (обработанные `EventId` на каждый обработчик) превращает at-least-once доставку в
   effectively-once обработку (§4.4).
@@ -251,28 +254,31 @@ sequenceDiagram
     participant W as Worker
 
     C->>API: POST /conversations/{id}/messages<br/>Idempotency-Key: K
-    API->>API: JWT, rate limit 1 msg/s, size ≤ 16 KB
-    API->>DB: SELECT message WHERE (conversation_id, author_id, K)
-    alt уже существует (повтор)
+    API->>API: JWT, rate limit 1 msg/s, size ≤ 16 KB, K — UUID
+    API->>DB: SELECT idempotency_keys WHERE (caller_id, K, PostMessage)
+    alt ключ найден, request hash совпал (повтор)
         API-->>C: 200 OK {существующее сообщение}
-    else новое сообщение
+    else ключ найден, request hash отличается
+        API-->>C: 422 Unprocessable Content
+    else новый запрос
         API->>DB: BEGIN
+        API->>DB: INSERT idempotency_keys (caller_id, K, PostMessage, hash, messageId)<br/>первой командой транзакции
         API->>DB: SELECT conversation … FOR UPDATE
         API->>API: ownership (CustomerId), Conversation.RegisterMessage(author):<br/>C4, C5, C8 → Seq = LastMessageSeq + 1,<br/>WaitingOnCustomer / Resolved → InProgress
         API->>DB: UPDATE conversation (last_message_seq, message_count,<br/>status, version + 1)
-        API->>DB: INSERT message (seq, author_id, idempotency_key = K)
+        API->>DB: INSERT message (id = messageId, seq, author_id)
         API->>DB: INSERT status_history (если статус изменился)
         API->>DB: INSERT outbox (MessagePosted [, ConversationStatusChanged])
         API->>DB: COMMIT
         API-->>C: 201 Created {seq}
     end
-    Note over API,DB: Конкурентный повтор с тем же K: INSERT нарушает UNIQUE →<br/>ROLLBACK всей транзакции → API возвращает сообщение первого запроса
+    Note over API,DB: Конкурентный повтор с тем же K ждёт на INSERT ключа, затем нарушение PK →<br/>ROLLBACK → поиск ключа → 200 (тот же hash) или 422 (другой hash)
     W->>DB: poll outbox (SKIP LOCKED)
     W->>W: Audit Handler, Notification Handler (если автор Agent)
 ```
 
 См. [ADR-0004](../desicions/0004-conversation-and-message-aggregates.md),
-[ADR-0005](../desicions/0005-message-ordering-seq.md), [ADR-0008](../desicions/0008-idempotency.md).
+[ADR-0005](../desicions/0005-message-ordering-seq.md), [ADR-0014](../desicions/0014-idempotency-keys-table.md).
 
 ### 3.2 Два агента одновременно берут обращение
 
