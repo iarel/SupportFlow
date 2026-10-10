@@ -10,7 +10,14 @@ internal sealed class ConversationQueries(ConversationsDbContext context) : ICon
         return context.Conversations
             .AsNoTracking()
             .Where(c => c.Id == conversationId)
-            .Select(c => new ConversationSummary(c.Id, c.Subject, c.Status, c.Priority, c.CreatedAt, c.Version))
+            .Select(c => new ConversationSummary(
+                c.Id,
+                c.CustomerId,
+                c.Subject,
+                c.Status,
+                c.Priority,
+                c.CreatedAt,
+                c.Version))
             .SingleOrDefaultAsync(cancellationToken);
     }
 }

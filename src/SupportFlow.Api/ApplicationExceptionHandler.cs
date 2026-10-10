@@ -18,7 +18,10 @@ internal sealed class ApplicationExceptionHandler(IProblemDetailsService problem
     {
         var (statusCode, retryAfter) = exception switch
         {
-            IdempotencyKeyReusedException => (StatusCodes.Status422UnprocessableEntity, (TimeSpan?)null),
+            // Unbindable parameters and oversized bodies; thrown instead of returned in Development.
+            BadHttpRequestException badRequest => (badRequest.StatusCode, (TimeSpan?)null),
+            AccessDeniedException => (StatusCodes.Status403Forbidden, null),
+            IdempotencyKeyReusedException => (StatusCodes.Status422UnprocessableEntity, null),
             RateLimitExceededException limit => (StatusCodes.Status429TooManyRequests, limit.RetryAfter),
 
             // The transaction was rolled back; a retry with the same idempotency key is safe (ADR-0014).

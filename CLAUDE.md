@@ -6,7 +6,8 @@ SupportFlow is a customer support platform: customers open conversations, agents
 manage assignment and workload, AI produces suggestions that a human accepts or rejects.
 
 Stage 1 — modular monolith: two host processes (API and Worker), one PostgreSQL. Implemented so far: opening a
-conversation end to end (`POST /conversations`). Identity has `UserAccount` with JIT creation of customers
+conversation end to end (`POST /conversations`) and reading it by its customer (`GET /conversations/{id}`,
+`GET /conversations/{id}/messages`). Identity has `UserAccount` with JIT creation of customers
 (ADR-0016); SupportOrganization has only a minimal `Team` and the seeded default team behind `ITeamQueries` (Q2 in
 `domain-model.md` §13 is still open). The other modules are empty skeletons; there is no outbox dispatcher, inbox,
 staff accounts or IdP choice yet. Do not assume they exist.
@@ -61,7 +62,7 @@ tests/SupportFlow.Api.IntegrationTests/              # HTTP through the API host
 
 HTTP: endpoints get the caller through `ICurrentUser` (BuildingBlocks port, implemented by Identity) and require an
 Identity policy from `IdentityPolicies` (`Identity.Contracts`). Errors shared by all commands are mapped by
-`ApplicationExceptionHandler` in the API host (`IdempotencyKeyReusedException` → 422,
+`ApplicationExceptionHandler` in the API host (`AccessDeniedException` → 403, `IdempotencyKeyReusedException` → 422,
 `RateLimitExceededException` → 429 with `Retry-After`, `LockTimeoutException` → 503, `DomainException` → 409);
 endpoints map command-specific meanings themselves. Every unit of work sets `lock_timeout` = 5 s.
 
