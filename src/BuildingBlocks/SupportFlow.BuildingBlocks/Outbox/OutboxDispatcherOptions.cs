@@ -22,4 +22,9 @@ public sealed class OutboxDispatcherOptions
     public TimeSpan InitialRetryDelay { get; init; } = TimeSpan.FromSeconds(1);
 
     public TimeSpan MaxRetryDelay { get; init; } = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// How often the outbox lag and parked events are measured.
+    /// </summary>
+    public TimeSpan BacklogInterval { get; init; } = TimeSpan.FromSeconds(15);
 }

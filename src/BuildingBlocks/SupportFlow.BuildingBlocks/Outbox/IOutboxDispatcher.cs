@@ -9,4 +9,9 @@ public interface IOutboxDispatcher
     /// Claims and delivers one batch of due events. Returns the number of claimed events.
     /// </summary>
     Task<int> DispatchBatchAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Measures the outbox lag and parked events and records them as metrics.
+    /// </summary>
+    Task<OutboxBacklog> ObserveBacklogAsync(CancellationToken cancellationToken);
 }

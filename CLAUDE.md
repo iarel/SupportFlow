@@ -38,7 +38,8 @@ dotnet test --solution SupportFlow.slnx --filter-class "SupportFlow.Architecture
 dotnet test --solution SupportFlow.slnx --filter-method "*ShouldNotDependOnInternalsOfOtherModules"
 dotnet run --project src/SupportFlow.Api        # http://localhost:5219, Development applies migrations
 dotnet user-jwts create --project src/SupportFlow.Api   # development Bearer token, no IdP needed
-dotnet run --project src/SupportFlow.Worker
+dotnet run --project src/SupportFlow.Worker     # http://localhost:5220, health endpoints only
+docker run -d -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm   # then OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 dotnet ef migrations add <Name> --project src/Modules/<Module>/SupportFlow.Modules.<Module> --output-dir Infrastructure/Migrations
 ```
 
@@ -52,6 +53,7 @@ dotnet ef migrations add <Name> --project src/Modules/<Module>/SupportFlow.Modul
 
 ```
 src/SupportFlow.Api/, src/SupportFlow.Worker/       # hosts
+src/SupportFlow.ServiceDefaults/                    # OpenTelemetry and health checks of both hosts
 src/BuildingBlocks/SupportFlow.BuildingBlocks/
 src/Modules/<Module>/SupportFlow.Modules.<Module>/            # Domain, Application, Infrastructure, Endpoints, EventHandlers
 src/Modules/<Module>/SupportFlow.Modules.<Module>.Contracts/  # public contract
@@ -67,6 +69,12 @@ Identity policy from `IdentityPolicies` (`Identity.Contracts`). Errors shared by
 `ApplicationExceptionHandler` in the API host (`AccessDeniedException` → 403, `IdempotencyKeyReusedException` → 422,
 `RateLimitExceededException` → 429 with `Retry-After`, `LockTimeoutException` → 503, `DomainException` → 409);
 endpoints map command-specific meanings themselves. Every unit of work sets `lock_timeout` = 5 s.
+
+Observability (containers.md): both hosts call `AddServiceDefaults()` and `MapHealthEndpoints()`
+(`/health/live`, `/health/ready`). OpenTelemetry is configured by `OTEL_*` variables and exports only when
+`OTEL_EXPORTER_OTLP_ENDPOINT` is set. SupportFlow activity sources and meters are named `SupportFlow.*`. Outbox rows
+carry the publishing request's `traceparent`, so delivery continues its trace; `IntegrationEventContext.CorrelationId`
+is the trace id. Target platform is Kubernetes (ADR pending); the production IdP is still open (ADR-0011).
 
 Persistence: one `DbContext` per module with its own schema, snake_case names, migrations and
 `__ef_migrations_history` table; the module's `idempotency_keys`, `outbox` and `inbox` tables come from

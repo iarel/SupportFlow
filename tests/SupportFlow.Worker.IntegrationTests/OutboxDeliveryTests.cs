@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using SupportFlow.BuildingBlocks.Application;
@@ -116,6 +117,67 @@ public sealed class OutboxDeliveryTests(WorkerFixture database) : IAsyncDisposab
     }
 
     [Fact]
+    public async Task DeliveryContinuesTraceOfPublishingRequest()
+    {
+        using var requests = new ActivitySource("SupportFlow.Tests");
+        var deliveries = new List<Activity>();
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name is "SupportFlow.Tests" or "SupportFlow.Outbox",
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
+            ActivityStopped = activity =>
+            {
+                if (activity.Source.Name == "SupportFlow.Outbox")
+                {
+                    lock (deliveries)
+                    {
+                        deliveries.Add(activity);
+                    }
+                }
+            },
+        };
+        ActivitySource.AddActivityListener(listener);
+
+        Guid conversationId;
+        ActivityTraceId traceId;
+
+        using (var request = requests.StartActivity("POST /conversations"))
+        {
+            Assert.NotNull(request);
+            traceId = request.TraceId;
+            conversationId = await OpenConversationAsync();
+        }
+
+        await DispatchAllAsync(_services);
+
+        Assert.Contains(
+            deliveries,
+            d => d.TraceId == traceId && d.OperationName == $"deliver {ConversationOpenedType}");
+        Assert.Equal(traceId.ToHexString(), await AuditCorrelationIdAsync(conversationId));
+    }
+
+    [Fact]
+    public async Task BacklogReportsOldestPendingEventAndParkedEvents()
+    {
+        var pending = await InsertOutboxRowAsync("created_at = now() - interval '2 minutes'");
+        var parked = await InsertOutboxRowAsync("failed_at = now()");
+
+        try
+        {
+            var backlog = await _services.GetServices<IOutboxDispatcher>().Single().ObserveBacklogAsync(CancellationToken);
+
+            Assert.True(backlog.Lag >= TimeSpan.FromMinutes(2), $"Lag was {backlog.Lag}.");
+            Assert.True(backlog.Parked >= 1, $"Parked was {backlog.Parked}.");
+        }
+        finally
+        {
+            // The test rows have an unknown event type; other tests must not deliver them.
+            await ExecuteAsync("DELETE FROM conversations.outbox WHERE id = $1", pending);
+            await ExecuteAsync("DELETE FROM conversations.outbox WHERE id = $1", parked);
+        }
+    }
+
+    [Fact]
     public async Task CleanupDeletesOnlyExpiredRecords()
     {
         var oldProcessed = await InsertOutboxRowAsync("processed_at = now() - interval '8 days'");
@@ -201,6 +263,16 @@ public sealed class OutboxDeliveryTests(WorkerFixture database) : IAsyncDisposab
         }
 
         return events;
+    }
+
+    private async Task<string?> AuditCorrelationIdAsync(Guid conversationId)
+    {
+        await using var connection = await database.OpenConnectionAsync();
+        await using var command = Command(
+            connection,
+            "SELECT correlation_id FROM audit.audit_events WHERE target_id = $1",
+            conversationId);
+        return await command.ExecuteScalarAsync(CancellationToken) as string;
     }
 
     private async Task<Guid> InsertOutboxRowAsync(string state)

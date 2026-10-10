@@ -24,7 +24,6 @@ internal sealed class RecordAuditHandler(
                     return false;
                 }
 
-                // No correlation id is propagated through integration events yet.
                 auditEvents.Add(AuditEvent.Record(
                     command.SourceEventId,
                     command.OccurredAt,
@@ -34,7 +33,7 @@ internal sealed class RecordAuditHandler(
                     command.TargetType,
                     command.TargetId,
                     command.Details,
-                    correlationId: null));
+                    command.CorrelationId));
 
                 return true;
             },

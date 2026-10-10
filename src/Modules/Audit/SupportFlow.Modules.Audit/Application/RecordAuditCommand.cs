@@ -15,4 +15,5 @@ internal sealed record RecordAuditCommand(
     string Action,
     string TargetType,
     Guid TargetId,
-    string? Details);
+    string? Details,
+    string? CorrelationId);

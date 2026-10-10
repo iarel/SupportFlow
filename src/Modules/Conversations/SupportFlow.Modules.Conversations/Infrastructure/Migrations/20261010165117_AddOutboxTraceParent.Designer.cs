@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SupportFlow.Modules.Conversations.Infrastructure;
@@ -11,9 +12,11 @@ using SupportFlow.Modules.Conversations.Infrastructure;
 namespace SupportFlow.Modules.Conversations.Infrastructure.Migrations
 {
     [DbContext(typeof(ConversationsDbContext))]
-    partial class ConversationsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261010165117_AddOutboxTraceParent")]
+    partial class AddOutboxTraceParent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
