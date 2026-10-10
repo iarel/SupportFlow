@@ -1,11 +1,13 @@
 using Microsoft.EntityFrameworkCore;
 using SupportFlow.BuildingBlocks.Application;
+using SupportFlow.BuildingBlocks.Inbox;
 using SupportFlow.BuildingBlocks.Outbox;
 
 namespace SupportFlow.BuildingBlocks.Persistence;
 
 /// <summary>
-/// Tables of BuildingBlocks mechanisms, created in the default schema of the module's context.
+/// Tables of BuildingBlocks mechanisms, created in the default schema of the module's context. Outbox and inbox
+/// columns are named explicitly because the dispatcher and the inbox use them in SQL.
 /// </summary>
 public static class ModelBuilderExtensions
 {
@@ -38,9 +40,42 @@ public static class ModelBuilderExtensions
         {
             builder.ToTable("outbox");
             builder.HasKey(m => m.Id);
-            builder.Property(m => m.Id).ValueGeneratedNever();
-            builder.Property(m => m.Payload).HasColumnType("jsonb");
-            builder.HasIndex(m => m.CreatedAt);
+            builder.Property(m => m.Id).HasColumnName("id").ValueGeneratedNever();
+            builder.Property(m => m.Type).HasColumnName("type");
+            builder.Property(m => m.Payload).HasColumnName("payload").HasColumnType("jsonb");
+            builder.Property(m => m.CreatedAt).HasColumnName("created_at");
+            builder.Property(m => m.Attempts).HasColumnName("attempts");
+            builder.Property(m => m.NextAttemptAt).HasColumnName("next_attempt_at");
+            builder.Property(m => m.LockedUntil).HasColumnName("locked_until");
+            builder.Property(m => m.ProcessedAt).HasColumnName("processed_at");
+            builder.Property(m => m.FailedAt).HasColumnName("failed_at");
+            builder.Property(m => m.LastError).HasColumnName("last_error");
+
+            // Pending events, in the order the dispatcher claims them.
+            builder.HasIndex(m => m.NextAttemptAt).HasFilter("processed_at IS NULL AND failed_at IS NULL");
+
+            // Cleanup of delivered events.
+            builder.HasIndex(m => m.ProcessedAt);
+        });
+
+        return modelBuilder;
+    }
+
+    /// <summary>
+    /// <c>inbox</c>, ADR-0008.
+    /// </summary>
+    public static ModelBuilder ApplyInbox(this ModelBuilder modelBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        modelBuilder.Entity<InboxMessage>(builder =>
+        {
+            builder.ToTable("inbox");
+            builder.HasKey(m => new { m.HandlerName, m.EventId });
+            builder.Property(m => m.HandlerName).HasColumnName("handler_name");
+            builder.Property(m => m.EventId).HasColumnName("event_id");
+            builder.Property(m => m.ProcessedAt).HasColumnName("processed_at");
+            builder.HasIndex(m => m.ProcessedAt);
         });
 
         return modelBuilder;

@@ -12,6 +12,7 @@ public sealed class OutboxMessage
         Type = type;
         Payload = payload;
         CreatedAt = createdAt;
+        NextAttemptAt = createdAt;
     }
 
     public Guid Id { get; private set; }
@@ -28,5 +29,24 @@ public sealed class OutboxMessage
 
     public DateTimeOffset CreatedAt { get; private set; }
 
+    /// <summary>
+    /// Delivery attempts started, including one in progress.
+    /// </summary>
+    public int Attempts { get; private set; }
+
+    public DateTimeOffset NextAttemptAt { get; private set; }
+
+    /// <summary>
+    /// Lease of the dispatcher instance delivering the event.
+    /// </summary>
+    public DateTimeOffset? LockedUntil { get; private set; }
+
     public DateTimeOffset? ProcessedAt { get; private set; }
+
+    /// <summary>
+    /// Set when the attempts are exhausted; the event stays for inspection and manual replay.
+    /// </summary>
+    public DateTimeOffset? FailedAt { get; private set; }
+
+    public string? LastError { get; private set; }
 }

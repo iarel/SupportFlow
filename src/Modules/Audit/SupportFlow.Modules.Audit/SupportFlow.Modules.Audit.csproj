@@ -5,8 +5,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="SupportFlow.Worker.IntegrationTests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\SupportFlow.BuildingBlocks\SupportFlow.BuildingBlocks.csproj" />
     <ProjectReference Include="..\SupportFlow.Modules.Audit.Contracts\SupportFlow.Modules.Audit.Contracts.csproj" />
+    <ProjectReference Include="..\..\Conversations\SupportFlow.Modules.Conversations.Contracts\SupportFlow.Modules.Conversations.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

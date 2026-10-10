@@ -48,5 +48,6 @@
     <Project Path="tests/SupportFlow.Modules.Conversations.IntegrationTests/SupportFlow.Modules.Conversations.IntegrationTests.csproj" />
     <Project Path="tests/SupportFlow.Modules.Conversations.Tests/SupportFlow.Modules.Conversations.Tests.csproj" />
     <Project Path="tests/SupportFlow.Modules.SupportOrganization.IntegrationTests/SupportFlow.Modules.SupportOrganization.IntegrationTests.csproj" />
+    <Project Path="tests/SupportFlow.Worker.IntegrationTests/SupportFlow.Worker.IntegrationTests.csproj" />
   </Folder>
 </Solution>

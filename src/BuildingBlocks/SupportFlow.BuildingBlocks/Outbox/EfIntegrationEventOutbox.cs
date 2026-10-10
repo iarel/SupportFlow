@@ -1,5 +1,3 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using SupportFlow.BuildingBlocks.Application;
 
@@ -12,23 +10,17 @@ namespace SupportFlow.BuildingBlocks.Outbox;
 public sealed class EfIntegrationEventOutbox(DbContext context, IntegrationEventTypes types, TimeProvider timeProvider)
     : IIntegrationEventOutbox
 {
-    private static readonly JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        Converters = { new JsonStringEnumConverter() },
-    };
-
     public void Add<TEvent>(TEvent integrationEvent)
         where TEvent : class
     {
         ArgumentNullException.ThrowIfNull(integrationEvent);
 
-        var eventType = integrationEvent.GetType();
         var now = timeProvider.GetUtcNow();
 
         context.Set<OutboxMessage>().Add(new OutboxMessage(
             Guid.CreateVersion7(now),
-            types.GetName(eventType),
-            JsonSerializer.Serialize(integrationEvent, eventType, _serializerOptions),
+            types.GetName(integrationEvent.GetType()),
+            IntegrationEventSerializer.Serialize(integrationEvent),
             now));
     }
 }
