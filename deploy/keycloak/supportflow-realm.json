@@ -1,0 +1,46 @@
+{
+  "realm": "supportflow",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "supportflow-dev",
+      "name": "Local token client (password grant), not for production",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "supportflow-api audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "supportflow-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "customer",
+      "email": "customer@supportflow.local",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Customer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "customer", "temporary": false }]
+    },
+    {
+      "username": "customer2",
+      "email": "customer2@supportflow.local",
+      "emailVerified": true,
+      "firstName": "Second",
+      "lastName": "Customer",
+      "enabled": true,
+      "credentials": [{ "type": "password", "value": "customer2", "temporary": false }]
+    }
+  ]
+}
