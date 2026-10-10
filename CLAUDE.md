@@ -9,8 +9,9 @@ Stage 1 — modular monolith: two host processes (API and Worker), one PostgreSQ
 conversation end to end (`POST /conversations`) and reading it by its customer (`GET /conversations/{id}`,
 `GET /conversations/{id}/messages`). Identity has `UserAccount` with JIT creation of customers
 (ADR-0016); SupportOrganization has only a minimal `Team` and the seeded default team behind `ITeamQueries` (Q2 in
-`domain-model.md` §13 is still open). The other modules are empty skeletons; there is no outbox dispatcher, inbox,
-staff accounts or IdP choice yet. Do not assume they exist.
+`domain-model.md` §13 is still open). The Worker delivers outbox events; Audit records `ConversationOpened`. The
+other modules are empty skeletons; there are no AI suggestions, notifications, staff accounts or IdP choice yet.
+Do not assume they exist.
 
 ## Documentation
 
@@ -58,6 +59,7 @@ tests/SupportFlow.ArchitectureTests/
 tests/SupportFlow.<Project>.Tests/                  # unit tests, in-memory ports
 tests/SupportFlow.Modules.<Module>.IntegrationTests/ # real PostgreSQL
 tests/SupportFlow.Api.IntegrationTests/              # HTTP through the API host, test-signed JWTs
+tests/SupportFlow.Worker.IntegrationTests/           # outbox delivery and cleanup across modules
 ```
 
 HTTP: endpoints get the caller through `ICurrentUser` (BuildingBlocks port, implemented by Identity) and require an
@@ -67,10 +69,16 @@ Identity policy from `IdentityPolicies` (`Identity.Contracts`). Errors shared by
 endpoints map command-specific meanings themselves. Every unit of work sets `lock_timeout` = 5 s.
 
 Persistence: one `DbContext` per module with its own schema, snake_case names, migrations and
-`__ef_migrations_history` table; the module's `idempotency_keys` and `outbox` tables come from
+`__ef_migrations_history` table; the module's `idempotency_keys`, `outbox` and `inbox` tables come from
 `ModelBuilderExtensions` in BuildingBlocks. Generated migrations are marked as generated code in `.editorconfig`.
-`IUnitOfWork`, `IIdempotencyStore` and `IIntegrationEventOutbox` are bound to a module's `DbContext`, so they are
-not registered in the shared DI container: the module's `Add<Module>()` builds its handlers with its own instances.
+`IUnitOfWork`, `IIdempotencyStore`, `IIntegrationEventOutbox` and `IInbox` are bound to a module's `DbContext`, so
+they are not registered in the shared DI container: the module's `Add<Module>()` builds its handlers with its own
+instances.
+
+Events (ADR-0003, ADR-0008, ADR-0015): a publishing module registers `AddOutbox<TContext>(<its event names>)`; a
+consuming module implements `IIntegrationEventHandler<TEvent>` in `EventHandlers/` with a stable `Name`, registers
+it with `AddIntegrationEventHandler`, and its Application handler writes `IInbox` first in the same unit of work.
+Modules with these tables also call `AddRetentionCleanup<TContext>()`. The Worker runs the dispatcher and cleanup.
 
 Modules: `Conversations`, `SupportOrganization`, `Identity`, `AIAssistance`, `Notifications`, `Audit`,
 `Reporting`. A module has only the layer folders it needs (`architecture.md` §2).
