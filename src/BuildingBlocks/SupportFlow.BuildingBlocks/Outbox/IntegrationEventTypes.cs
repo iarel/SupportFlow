@@ -1,3 +1,5 @@
+using System.Diagnostics.CodeAnalysis;
+
 namespace SupportFlow.BuildingBlocks.Outbox;
 
 /// <summary>
@@ -7,18 +9,19 @@ namespace SupportFlow.BuildingBlocks.Outbox;
 public sealed class IntegrationEventTypes
 {
     private readonly Dictionary<Type, string> _names = [];
-    private readonly HashSet<string> _usedNames = [];
+    private readonly Dictionary<string, Type> _types = [];
 
     public IntegrationEventTypes Add<TEvent>(string name)
         where TEvent : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        if (!_usedNames.Add(name) || !_names.TryAdd(typeof(TEvent), name))
+        if (_names.ContainsKey(typeof(TEvent)) || !_types.TryAdd(name, typeof(TEvent)))
         {
             throw new ArgumentException($"Integration event {typeof(TEvent).Name} or name '{name}' is already registered.");
         }
 
+        _names.Add(typeof(TEvent), name);
         return this;
     }
 
@@ -30,5 +33,10 @@ public sealed class IntegrationEventTypes
             ? name
             : throw new InvalidOperationException(
                 $"{eventType.Name} is not a registered integration event of this module.");
+    }
+
+    public bool TryGetType(string name, [NotNullWhen(true)] out Type? eventType)
+    {
+        return _types.TryGetValue(name, out eventType);
     }
 }

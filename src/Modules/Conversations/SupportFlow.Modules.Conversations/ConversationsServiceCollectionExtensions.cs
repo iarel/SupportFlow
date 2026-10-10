@@ -20,6 +20,8 @@ public static class ConversationsServiceCollectionExtensions
             configuration.GetConnectionString("SupportFlow")
                 ?? throw new InvalidOperationException("Connection string 'SupportFlow' is not configured.")));
         services.AddDatabaseMigrator<ConversationsDbContext>();
+        services.AddOutbox<ConversationsDbContext>(ConversationsIntegrationEventTypes.All);
+        services.AddRetentionCleanup<ConversationsDbContext>();
 
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
