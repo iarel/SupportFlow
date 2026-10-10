@@ -1,6 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <ProjectReference Include="..\SupportFlow.ServiceDefaults\SupportFlow.ServiceDefaults.csproj" />
     <ProjectReference Include="..\Modules\Conversations\SupportFlow.Modules.Conversations\SupportFlow.Modules.Conversations.csproj" />
     <ProjectReference Include="..\Modules\SupportOrganization\SupportFlow.Modules.SupportOrganization\SupportFlow.Modules.SupportOrganization.csproj" />
     <ProjectReference Include="..\Modules\Identity\SupportFlow.Modules.Identity\SupportFlow.Modules.Identity.csproj" />

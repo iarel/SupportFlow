@@ -124,6 +124,10 @@ flowchart TB
 API и Worker отправляют metrics, logs и traces в OTel Collector (OTLP). Correlation ID проходит через
 HTTP-запрос, outbox-событие и обработчики, так что асинхронную цепочку можно проследить одним trace.
 
+Trace context (W3C `traceparent`) сохраняется в строке outbox и восстанавливается dispatcher'ом, поэтому
+HTTP-запрос, доставка события и обработчики образуют один trace. Correlation ID — trace id. API и Worker отдают
+`/health/live` (процесс жив, без зависимостей) и `/health/ready` (доступна PostgreSQL) для проб оркестратора.
+
 Минимальный набор метрик Stage 1 [Assumption]:
 
 | Метрика | Зачем |

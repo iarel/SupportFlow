@@ -13,8 +13,15 @@ dotnet build SupportFlow.slnx
 dotnet test --solution SupportFlow.slnx
 
 dotnet run --project src/SupportFlow.Api      # http://localhost:5219
-dotnet run --project src/SupportFlow.Worker
+dotnet run --project src/SupportFlow.Worker   # http://localhost:5220 (только health)
 ```
+
+Для разработки нужна локальная PostgreSQL (строка подключения в `appsettings.Development.json`). Интеграционные
+тесты поднимают PostgreSQL сами через Testcontainers и требуют запущенный Docker.
+
+Телеметрия локально: запустить `docker run -d -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm`, задать
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` для API и Worker и открыть Grafana на http://localhost:3000.
+Health checks: `/health/live`, `/health/ready`.
 
 ## Структура
 
