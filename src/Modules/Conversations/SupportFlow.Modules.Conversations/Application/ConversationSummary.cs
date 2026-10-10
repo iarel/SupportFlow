@@ -7,6 +7,7 @@ namespace SupportFlow.Modules.Conversations.Application;
 /// </summary>
 internal sealed record ConversationSummary(
     Guid Id,
+    Guid CustomerId,
     string Subject,
     ConversationStatus Status,
     ConversationPriority Priority,

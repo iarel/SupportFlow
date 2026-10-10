@@ -24,6 +24,9 @@ public static class ConversationsServiceCollectionExtensions
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IMessageRepository, MessageRepository>();
         services.AddScoped<IConversationQueries, ConversationQueries>();
+        services.AddScoped<IMessageQueries, MessageQueries>();
+        services.AddScoped<GetConversationHandler>();
+        services.AddScoped<GetMessagesHandler>();
 
         // IUnitOfWork, IIdempotencyStore and IIntegrationEventOutbox are shared BuildingBlocks ports, but each
         // module binds them to its own DbContext. Registered in the shared container, the modules would override

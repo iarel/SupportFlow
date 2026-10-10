@@ -11,6 +11,8 @@ public static class ConversationsEndpointRouteBuilderExtensions
     {
         var conversations = endpoints.MapGroup("/conversations").WithTags("Conversations");
         conversations.MapOpenConversation();
+        conversations.MapGetConversation();
+        conversations.MapGetMessages();
         return endpoints;
     }
 }

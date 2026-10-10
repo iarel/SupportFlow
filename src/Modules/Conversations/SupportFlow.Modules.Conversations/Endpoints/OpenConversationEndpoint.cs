@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -84,8 +83,7 @@ internal static class OpenConversationEndpoint
             return TypedResults.NotFound();
         }
 
-        // ADR-0007: the version for If-Match of later changes.
-        httpContext.Response.Headers.ETag = $"\"{conversation.Version.ToString(CultureInfo.InvariantCulture)}\"";
+        httpContext.Response.SetConversationVersion(conversation.Version);
 
         var response = ConversationResponse.From(conversation);
 
