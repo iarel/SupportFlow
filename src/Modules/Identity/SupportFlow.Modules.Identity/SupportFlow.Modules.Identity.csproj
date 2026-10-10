@@ -5,6 +5,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="EFCore.NamingConventions" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\BuildingBlocks\SupportFlow.BuildingBlocks\SupportFlow.BuildingBlocks.csproj" />
     <ProjectReference Include="..\SupportFlow.Modules.Identity.Contracts\SupportFlow.Modules.Identity.Contracts.csproj" />
   </ItemGroup>
