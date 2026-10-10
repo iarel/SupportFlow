@@ -41,6 +41,7 @@ dotnet user-jwts create --project src/SupportFlow.Api   # development Bearer tok
 dotnet run --project src/SupportFlow.Worker     # http://localhost:5220, health endpoints only
 docker run -d -p 3000:3000 -p 4317:4317 -p 4318:4318 grafana/otel-lgtm   # then OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
 dotnet ef migrations add <Name> --project src/Modules/<Module>/SupportFlow.Modules.<Module> --output-dir Infrastructure/Migrations
+docker compose -f deploy/docker-compose.yml up --build -d   # production-like: images, migrate step, Keycloak, LGTM
 ```
 
 `dotnet test` needs `--solution`: the test runner is Microsoft.Testing.Platform (`global.json`).
@@ -54,6 +55,7 @@ dotnet ef migrations add <Name> --project src/Modules/<Module>/SupportFlow.Modul
 ```
 src/SupportFlow.Api/, src/SupportFlow.Worker/       # hosts
 src/SupportFlow.ServiceDefaults/                    # OpenTelemetry and health checks of both hosts
+deploy/                                             # docker-compose for the production-like local run
 src/BuildingBlocks/SupportFlow.BuildingBlocks/
 src/Modules/<Module>/SupportFlow.Modules.<Module>/            # Domain, Application, Infrastructure, Endpoints, EventHandlers
 src/Modules/<Module>/SupportFlow.Modules.<Module>.Contracts/  # public contract
@@ -74,7 +76,14 @@ Observability (containers.md): both hosts call `AddServiceDefaults()` and `MapHe
 (`/health/live`, `/health/ready`). OpenTelemetry is configured by `OTEL_*` variables and exports only when
 `OTEL_EXPORTER_OTLP_ENDPOINT` is set. SupportFlow activity sources and meters are named `SupportFlow.*`. Outbox rows
 carry the publishing request's `traceparent`, so delivery continues its trace; `IntegrationEventContext.CorrelationId`
-is the trace id. Target platform is Kubernetes (ADR pending); the production IdP is still open (ADR-0011).
+is the trace id.
+
+Deployment (ADR-0017): two images built from the repository root (`src/SupportFlow.Api/Dockerfile`,
+`src/SupportFlow.Worker/Dockerfile`, chiseled, non-root). Outside Development the schema is changed only by the
+separate `migrate` step (`dotnet SupportFlow.Api.dll migrate`), run before the new version; migrations must stay
+compatible with the previous version (expand/contract). No orchestrator is chosen (requirements §13), so Kubernetes is
+not a decided target. `deploy/docker-compose.yml` is the local production-like run; its Keycloak is a local stand-in,
+the production IdP is still open (ADR-0011).
 
 Persistence: one `DbContext` per module with its own schema, snake_case names, migrations and
 `__ef_migrations_history` table; the module's `idempotency_keys`, `outbox` and `inbox` tables come from
@@ -141,4 +150,3 @@ the build (`.editorconfig`, CA1707).
 
 - `BuildingBlocks/Persistence/` (EF unit of work, idempotency store, model extensions) is not described in the
   documentation (`components.md` lists outbox, inbox, unit of work and domain base types).
-- How migrations are applied at deployment (on startup or as a separate step) is not decided.

@@ -1,0 +1,13 @@
+**/bin/
+**/obj/
+.git/
+.github/
+.claude/
+.vs/
+.idea/
+deploy/
+docs/
+load/
+perfomance/
+tests/
+TestResults/

@@ -23,6 +23,31 @@ dotnet run --project src/SupportFlow.Worker   # http://localhost:5220 (толь�
 `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317` для API и Worker и открыть Grafana на http://localhost:3000.
 Health checks: `/health/live`, `/health/ready`.
 
+## Production-like запуск
+
+Образы API и Worker, миграции отдельным шагом, Keycloak вместо Identity Provider, Grafana LGTM (ADR-0017):
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build -d
+```
+
+API — http://localhost:8080, health Worker — http://localhost:8081, Keycloak — http://localhost:8180
+(admin/admin), Grafana — http://localhost:3000. Сервис `migrate` применяет миграции и завершается; API и Worker
+стартуют только после его успешного завершения.
+
+Токен локального пользователя (`customer`/`customer` или `customer2`/`customer2`):
+
+```bash
+TOKEN=$(curl -s -d grant_type=password -d client_id=supportflow-dev -d username=customer -d password=customer \
+  http://localhost:8180/realms/supportflow/protocol/openid-connect/token | sed -E 's/.*"access_token":"([^"]+)".*/\1/')
+
+curl -i -X POST http://localhost:8080/conversations -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: $(uuidgen)" -H "Content-Type: application/json" \
+  -d '{"subject":"Вопрос","firstMessage":"Здравствуйте"}'
+```
+
+Остановить и удалить данные: `docker compose -f deploy/docker-compose.yml down -v`.
+
 ## Структура
 
 ```

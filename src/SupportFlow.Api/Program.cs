@@ -30,6 +30,14 @@ builder.Services
 
 var app = builder.Build();
 
+// ADR-0017: outside Development the schema is changed only by `migrate`, a separate deployment step that runs
+// before the new version starts and exits.
+if (args is ["migrate"])
+{
+    await app.Services.MigrateDatabasesAsync(CancellationToken.None);
+    return;
+}
+
 if (app.Environment.IsDevelopment())
 {
     await app.Services.MigrateDatabasesAsync(app.Lifetime.ApplicationStopping);

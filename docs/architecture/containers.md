@@ -115,8 +115,11 @@ flowchart TB
 ```
 
 - Минимум 2 instance API и 2 instance Worker, чтобы отказ одного instance не прерывал обслуживание (§4.3).
-- Все процессы запускаются как Docker-контейнеры из одного образа (разный entrypoint) или из двух образов
-  одного репозитория.
+- API и Worker — два образа одного репозитория: `supportflow-api` и `supportflow-worker` (ADR-0017).
+- Миграции применяет отдельный шаг `supportflow-api migrate` до запуска новой версии; API и Worker схему не
+  меняют (ADR-0017).
+- Оркестратор не выбран (§13). Локальный production-like запуск — `deploy/docker-compose.yml`; Keycloak в нём
+  только локально заменяет Identity Provider, выбор IdP открыт (ADR-0011).
 - Один регион (§11).
 
 ## Observability

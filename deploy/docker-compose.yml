@@ -1,0 +1,101 @@
+# Production-like local run (ADR-0017): images as deployed, migrations as a separate step, Production
+# environment. Not a production deployment: credentials and the Keycloak realm are for local use only.
+#
+#   docker compose -f deploy/docker-compose.yml up --build -d
+#
+# API http://localhost:8080, Worker probes http://localhost:8081, Keycloak http://localhost:8180,
+# Grafana http://localhost:3000.
+
+name: supportflow
+
+x-app-environment: &app-environment
+  ConnectionStrings__SupportFlow: Host=postgres;Database=supportflow;Username=supportflow;Password=supportflow;GSS Encryption Mode=Disable
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4317
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: supportflow
+      POSTGRES_USER: supportflow
+      POSTGRES_PASSWORD: supportflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "--username=supportflow", "--dbname=supportflow"]
+      interval: 2s
+      retries: 30
+
+  # Runs once before the new version starts; API and Worker start only if it succeeds.
+  migrate:
+    build:
+      context: ..
+      dockerfile: src/SupportFlow.Api/Dockerfile
+    image: supportflow-api
+    command: ["migrate"]
+    environment:
+      <<: *app-environment
+      OTEL_SERVICE_NAME: supportflow-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+      dockerfile: src/SupportFlow.Api/Dockerfile
+    image: supportflow-api
+    environment:
+      <<: *app-environment
+      OTEL_SERVICE_NAME: supportflow-api
+      # Keycloak stands in for the Identity Provider, which is not chosen yet (ADR-0011). Metadata is read inside
+      # the network; tokens carry the public issuer http://localhost:8180/realms/supportflow.
+      Authentication__Schemes__Bearer__MetadataAddress: http://keycloak:8080/realms/supportflow/.well-known/openid-configuration
+      Authentication__Schemes__Bearer__RequireHttpsMetadata: "false"
+      Authentication__Schemes__Bearer__ValidAudiences__0: supportflow-api
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_started
+
+  worker:
+    build:
+      context: ..
+      dockerfile: src/SupportFlow.Worker/Dockerfile
+    image: supportflow-worker
+    environment:
+      <<: *app-environment
+      OTEL_SERVICE_NAME: supportflow-worker
+    ports:
+      - "8081:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      # One public issuer for tokens requested from the host; back-channel URLs (JWKS) follow the request host,
+      # so the API reaches them inside the network.
+      KC_HOSTNAME: http://localhost:8180
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
+    ports:
+      - "8180:8080"
+
+  lgtm:
+    image: grafana/otel-lgtm
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres-data:

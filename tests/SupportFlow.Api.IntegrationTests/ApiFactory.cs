@@ -57,6 +57,20 @@ public sealed class ApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
         return connection;
     }
 
+    /// <summary>
+    /// Creates an empty database next to the API's own and returns its connection string.
+    /// </summary>
+    public async Task<string> CreateDatabaseAsync(string name, CancellationToken cancellationToken)
+    {
+        await using (var connection = await OpenConnectionAsync(cancellationToken))
+        {
+            await using var command = new NpgsqlCommand($"CREATE DATABASE {name}", connection);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return new NpgsqlConnectionStringBuilder(_container.GetConnectionString()) { Database = name }.ConnectionString;
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Development");
